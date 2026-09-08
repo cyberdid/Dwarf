@@ -1,0 +1,6 @@
+{
+  "name": "Dwarf Fortress Simulation & RAW Explorer",
+  "description": "Interactive Dwarf Fortress Web Simulation with procedural 3D multi-Z worldgen, overworld maps, and autonomous Gemini AI player modeled after Ben Lubar's df-ai and DFHack plugin architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
