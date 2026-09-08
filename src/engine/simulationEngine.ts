@@ -5,6 +5,7 @@
 
 import { FortressState, DwarfEntity, Tile, FortressEvent, WorldItem, DwarfThought, DwarfMood } from '../types/simulation';
 import { findPath3D } from './pathfinding';
+import { buildTaskIndex, updateTileInTaskIndex } from './taskIndex';
 
 export function runSimulationTick(
   state: FortressState,
@@ -111,23 +112,65 @@ export function runSimulationTick(
     });
   }
 
-  // Stockpiles scan
+  // Stockpiles and map items scan (Total on map vs in designated stockpiles)
   let stockpileStoneCount = 0;
   let stockpileWoodCount = 0;
   let stockpileFoodCount = 0;
   let stockpileOreCount = 0;
   let stockpileAleCount = 0;
 
+  let totalStoneCount = 0;
+  let totalWoodCount = 0;
+  let totalFoodCount = 0;
+  let totalOreCount = 0;
+  let totalAleCount = 0;
+
   for (const item of items) {
     const tile = tiles[item.z]?.[item.y]?.[item.x];
-    if (tile && tile.stockpile !== 'none') {
-      if (item.type === 'stone') stockpileStoneCount++;
-      if (item.type === 'wood') stockpileWoodCount++;
-      if (item.type === 'food') stockpileFoodCount++;
-      if (item.type === 'ore_iron' || item.type === 'ore_gold') stockpileOreCount++;
-      if (item.type === 'ale') stockpileAleCount++;
+    const inStockpile = !!(tile && tile.stockpile !== 'none');
+
+    if (item.type === 'stone') {
+      totalStoneCount++;
+      if (inStockpile) stockpileStoneCount++;
+    } else if (item.type === 'wood') {
+      totalWoodCount++;
+      if (inStockpile) stockpileWoodCount++;
+    } else if (item.type === 'food') {
+      totalFoodCount++;
+      if (inStockpile) stockpileFoodCount++;
+    } else if (item.type === 'ore_iron' || item.type === 'ore_gold') {
+      totalOreCount++;
+      if (inStockpile) stockpileOreCount++;
+    } else if (item.type === 'ale') {
+      totalAleCount++;
+      if (inStockpile) stockpileAleCount++;
     }
   }
+
+  // Task Indexing & Target Reservation System
+  const taskIndex = state.taskIndex || buildTaskIndex(tiles);
+  const reservedTiles = new Set<string>();
+  const activeDwarfItemClaims = new Map<string, string>(); // dwarfId -> targetItemId
+
+  for (const d of dwarves) {
+    if (d.currentTask) {
+      reservedTiles.add(`${d.currentTask.targetX},${d.currentTask.targetY},${d.currentTask.targetZ}`);
+      if (d.currentTask.targetItemId) {
+        activeDwarfItemClaims.set(d.id, d.currentTask.targetItemId);
+      }
+    }
+  }
+
+  // Clear stale claimedByDwarfId on items if dwarf no longer targets it
+  for (const item of items) {
+    if (item.claimedByDwarfId) {
+      if (activeDwarfItemClaims.get(item.claimedByDwarfId) !== item.id) {
+        item.claimedByDwarfId = undefined;
+      }
+    }
+  }
+
+  const itemsOccupiedTiles = new Set<string>(items.map(it => `${it.x},${it.y},${it.z}`));
 
   // Process Each Dwarf
   dwarves = dwarves.map(dwarf => {
@@ -171,13 +214,15 @@ export function runSimulationTick(
 
     // 2. Goal Decision & AI Tree (if idle or previous task completed)
     if (!updatedDwarf.currentTask) {
-      // Priority 1: Critical Thirst (< 25)
+      // Priority 1: Critical Thirst (< 30)
       if (thirst < 30) {
-        // Find drinking source: ale item or water tile
-        const drinkItem = items.find(it => it.type === 'ale');
+        // Find drinking source: unreserved ale item
+        const drinkItem = items.find(it => it.type === 'ale' && (!it.claimedByDwarfId || it.claimedByDwarfId === dwarf.id));
         if (drinkItem) {
           const path = findPath3D(dwarf.x, dwarf.y, dwarf.z, drinkItem.x, drinkItem.y, drinkItem.z, tiles, sizeX, sizeY, depthZ, true);
           if (path && path.length > 0) {
+            drinkItem.claimedByDwarfId = dwarf.id;
+            reservedTiles.add(`${drinkItem.x},${drinkItem.y},${drinkItem.z}`);
             updatedDwarf.currentTask = {
               type: 'drinking',
               targetX: drinkItem.x,
@@ -195,12 +240,14 @@ export function runSimulationTick(
         }
       }
 
-      // Priority 2: Critical Hunger (< 25)
+      // Priority 2: Critical Hunger (< 30)
       if (hunger < 30) {
-        const foodItem = items.find(it => it.type === 'food');
+        const foodItem = items.find(it => it.type === 'food' && (!it.claimedByDwarfId || it.claimedByDwarfId === dwarf.id));
         if (foodItem) {
           const path = findPath3D(dwarf.x, dwarf.y, dwarf.z, foodItem.x, foodItem.y, foodItem.z, tiles, sizeX, sizeY, depthZ, true);
           if (path && path.length > 0) {
+            foodItem.claimedByDwarfId = dwarf.id;
+            reservedTiles.add(`${foodItem.x},${foodItem.y},${foodItem.z}`);
             updatedDwarf.currentTask = {
               type: 'eating',
               targetX: foodItem.x,
@@ -218,16 +265,18 @@ export function runSimulationTick(
         }
       }
 
-      // Priority 3: Critical Sleep (< 20)
+      // Priority 3: Critical Sleep (< 25)
       if (sleep < 25) {
-        // Find a bed tile, or sleep where they are
+        // Find an unreserved bed tile via taskIndex, or sleep where they are
         let bedPos: { x: number; y: number; z: number } | null = null;
-        for (let z = 0; z < depthZ && !bedPos; z++) {
-          for (let y = 0; y < sizeY && !bedPos; y++) {
-            for (let x = 0; x < sizeX && !bedPos; x++) {
-              if (tiles[z][y][x].material === 'bed') {
-                bedPos = { x, y, z };
-              }
+        let minBedDist = Infinity;
+        for (const coord of taskIndex.beds.values()) {
+          const key = `${coord.x},${coord.y},${coord.z}`;
+          if (!reservedTiles.has(key)) {
+            const dist = Math.abs(coord.x - dwarf.x) + Math.abs(coord.y - dwarf.y) + Math.abs(coord.z - dwarf.z) * 2;
+            if (dist < minBedDist) {
+              minBedDist = dist;
+              bedPos = coord;
             }
           }
         }
@@ -235,6 +284,10 @@ export function runSimulationTick(
         const targetX = bedPos ? bedPos.x : dwarf.x;
         const targetY = bedPos ? bedPos.y : dwarf.y;
         const targetZ = bedPos ? bedPos.z : dwarf.z;
+
+        if (bedPos) {
+          reservedTiles.add(`${bedPos.x},${bedPos.y},${bedPos.z}`);
+        }
 
         const path = findPath3D(dwarf.x, dwarf.y, dwarf.z, targetX, targetY, targetZ, tiles, sizeX, sizeY, depthZ, false);
         updatedDwarf.currentTask = {
@@ -252,39 +305,32 @@ export function runSimulationTick(
       }
 
       // Priority 4: Active Fortress Designations (Mining, Tree Chopping, Building, Hauling)
-      // Check for designated mining tiles
-      let miningTarget: { x: number; y: number; z: number } | null = null;
-      let minMiningDist = Infinity;
-
-      for (let z = 0; z < depthZ; z++) {
-        for (let y = 0; y < sizeY; y++) {
-          for (let x = 0; x < sizeX; x++) {
-            const tile = tiles[z][y][x];
-            if (tile.designation === 'mine') {
-              const dist = Math.abs(x - dwarf.x) + Math.abs(y - dwarf.y) + Math.abs(z - dwarf.z) * 2;
-              if (dist < minMiningDist) {
-                minMiningDist = dist;
-                miningTarget = { x, y, z };
-              }
-            }
-          }
+      // Check for designated mining tiles using indexed coordinates
+      const miningCandidates: { x: number; y: number; z: number; dist: number }[] = [];
+      for (const coord of taskIndex.mining.values()) {
+        const key = `${coord.x},${coord.y},${coord.z}`;
+        if (!reservedTiles.has(key)) {
+          const dist = Math.abs(coord.x - dwarf.x) + Math.abs(coord.y - dwarf.y) + Math.abs(coord.z - dwarf.z) * 2;
+          miningCandidates.push({ ...coord, dist });
         }
       }
+      miningCandidates.sort((a, b) => a.dist - b.dist);
 
-      if (miningTarget) {
+      for (const cand of miningCandidates) {
         const path = findPath3D(
           dwarf.x, dwarf.y, dwarf.z,
-          miningTarget.x, miningTarget.y, miningTarget.z,
+          cand.x, cand.y, cand.z,
           tiles, sizeX, sizeY, depthZ, true
         );
 
         if (path && path.length > 0) {
-          const targetTile = tiles[miningTarget.z][miningTarget.y][miningTarget.x];
+          const targetTile = tiles[cand.z][cand.y][cand.x];
+          reservedTiles.add(`${cand.x},${cand.y},${cand.z}`);
           updatedDwarf.currentTask = {
             type: 'mining',
-            targetX: miningTarget.x,
-            targetY: miningTarget.y,
-            targetZ: miningTarget.z,
+            targetX: cand.x,
+            targetY: cand.y,
+            targetZ: cand.z,
             progress: 0,
             maxProgress: Math.max(12, Math.floor(targetTile.hardness / 3)),
             descriptionEn: `Mining ${targetTile.material.replace('ore_', '')} vein`,
@@ -295,38 +341,31 @@ export function runSimulationTick(
         }
       }
 
-      // Check for designated tree chopping
-      let treeTarget: { x: number; y: number; z: number } | null = null;
-      let minTreeDist = Infinity;
-
-      for (let z = 0; z < depthZ; z++) {
-        for (let y = 0; y < sizeY; y++) {
-          for (let x = 0; x < sizeX; x++) {
-            const tile = tiles[z][y][x];
-            if (tile.designation === 'chop' && tile.material === 'tree_trunk') {
-              const dist = Math.abs(x - dwarf.x) + Math.abs(y - dwarf.y) + Math.abs(z - dwarf.z) * 2;
-              if (dist < minTreeDist) {
-                minTreeDist = dist;
-                treeTarget = { x, y, z };
-              }
-            }
-          }
+      // Check for designated tree chopping using indexed coordinates
+      const treeCandidates: { x: number; y: number; z: number; dist: number }[] = [];
+      for (const coord of taskIndex.chopping.values()) {
+        const key = `${coord.x},${coord.y},${coord.z}`;
+        if (!reservedTiles.has(key)) {
+          const dist = Math.abs(coord.x - dwarf.x) + Math.abs(coord.y - dwarf.y) + Math.abs(coord.z - dwarf.z) * 2;
+          treeCandidates.push({ ...coord, dist });
         }
       }
+      treeCandidates.sort((a, b) => a.dist - b.dist);
 
-      if (treeTarget) {
+      for (const cand of treeCandidates) {
         const path = findPath3D(
           dwarf.x, dwarf.y, dwarf.z,
-          treeTarget.x, treeTarget.y, treeTarget.z,
+          cand.x, cand.y, cand.z,
           tiles, sizeX, sizeY, depthZ, true
         );
 
         if (path && path.length > 0) {
+          reservedTiles.add(`${cand.x},${cand.y},${cand.z}`);
           updatedDwarf.currentTask = {
             type: 'chopping',
-            targetX: treeTarget.x,
-            targetY: treeTarget.y,
-            targetZ: treeTarget.z,
+            targetX: cand.x,
+            targetY: cand.y,
+            targetZ: cand.z,
             progress: 0,
             maxProgress: 15,
             descriptionEn: 'Felling mountain cedar tree',
@@ -337,67 +376,62 @@ export function runSimulationTick(
         }
       }
 
-      // Check for designated construction (Walls, Doors, Beds, Workshops)
-      let buildTarget: { x: number; y: number; z: number; type: string } | null = null;
-      for (let z = 0; z < depthZ && !buildTarget; z++) {
-        for (let y = 0; y < sizeY && !buildTarget; y++) {
-          for (let x = 0; x < sizeX && !buildTarget; x++) {
-            const tile = tiles[z][y][x];
-            if (tile.designation.startsWith('build_')) {
-              buildTarget = { x, y, z, type: tile.designation };
-            }
-          }
+      // Check for designated construction using indexed coordinates
+      const buildCandidates: { x: number; y: number; z: number; type: string; dist: number }[] = [];
+      for (const coord of taskIndex.building.values()) {
+        const key = `${coord.x},${coord.y},${coord.z}`;
+        if (!reservedTiles.has(key)) {
+          const dist = Math.abs(coord.x - dwarf.x) + Math.abs(coord.y - dwarf.y) + Math.abs(coord.z - dwarf.z) * 2;
+          buildCandidates.push({ ...coord, dist });
         }
       }
+      buildCandidates.sort((a, b) => a.dist - b.dist);
 
-      if (buildTarget) {
+      for (const cand of buildCandidates) {
         const path = findPath3D(
           dwarf.x, dwarf.y, dwarf.z,
-          buildTarget.x, buildTarget.y, buildTarget.z,
+          cand.x, cand.y, cand.z,
           tiles, sizeX, sizeY, depthZ, true
         );
 
         if (path && path.length > 0) {
+          reservedTiles.add(`${cand.x},${cand.y},${cand.z}`);
           updatedDwarf.currentTask = {
             type: 'building',
-            targetX: buildTarget.x,
-            targetY: buildTarget.y,
-            targetZ: buildTarget.z,
+            targetX: cand.x,
+            targetY: cand.y,
+            targetZ: cand.z,
             progress: 0,
             maxProgress: 20,
-            descriptionEn: `Constructing ${buildTarget.type.replace('build_', '')}`,
-            descriptionUa: `Будує споруду: ${buildTarget.type.replace('build_', '')}`
+            descriptionEn: `Constructing ${cand.type.replace('build_', '')}`,
+            descriptionUa: `Будує споруду: ${cand.type.replace('build_', '')}`
           };
           updatedDwarf.path = path;
           return updatedDwarf;
         }
       }
 
-      // Check for Hauling unstockpiled items to designated stockpiles
+      // Check for Hauling unstockpiled items to designated stockpiles using indexed coordinates
       const unstockpiledItem = items.find(it => {
+        if (it.claimedByDwarfId && it.claimedByDwarfId !== dwarf.id) return false;
         const tile = tiles[it.z]?.[it.y]?.[it.x];
         return tile && tile.stockpile === 'none';
       });
 
       if (unstockpiledItem) {
-        // Look for corresponding stockpile zone
+        let pileMap: Map<string, { x: number; y: number; z: number }> | null = null;
+        if (unstockpiledItem.type === 'stone') pileMap = taskIndex.stockpiles.stone;
+        else if (unstockpiledItem.type === 'wood') pileMap = taskIndex.stockpiles.wood;
+        else if (unstockpiledItem.type === 'food' || unstockpiledItem.type === 'ale') pileMap = taskIndex.stockpiles.food;
+        else if (unstockpiledItem.type === 'ore_iron' || unstockpiledItem.type === 'ore_gold') pileMap = taskIndex.stockpiles.ore;
+
         let stockpilePos: { x: number; y: number; z: number } | null = null;
-        for (let z = 0; z < depthZ && !stockpilePos; z++) {
-          for (let y = 0; y < sizeY && !stockpilePos; y++) {
-            for (let x = 0; x < sizeX && !stockpilePos; x++) {
-              const tile = tiles[z][y][x];
-              if (
-                (unstockpiledItem.type === 'stone' && tile.stockpile === 'stone') ||
-                (unstockpiledItem.type === 'wood' && tile.stockpile === 'wood') ||
-                ((unstockpiledItem.type === 'food' || unstockpiledItem.type === 'ale') && tile.stockpile === 'food') ||
-                ((unstockpiledItem.type === 'ore_iron' || unstockpiledItem.type === 'ore_gold') && tile.stockpile === 'ore')
-              ) {
-                // Check if tile already has an item
-                const hasItem = items.some(it => it.x === x && it.y === y && it.z === z);
-                if (!hasItem) {
-                  stockpilePos = { x, y, z };
-                }
-              }
+        if (pileMap) {
+          for (const coord of pileMap.values()) {
+            const key = `${coord.x},${coord.y},${coord.z}`;
+            if (!reservedTiles.has(key) && !itemsOccupiedTiles.has(key)) {
+              stockpilePos = coord;
+              break;
             }
           }
         }
@@ -410,6 +444,10 @@ export function runSimulationTick(
           );
 
           if (pathToItem && pathToItem.length > 0) {
+            unstockpiledItem.claimedByDwarfId = dwarf.id;
+            const pileKey = `${stockpilePos.x},${stockpilePos.y},${stockpilePos.z}`;
+            reservedTiles.add(pileKey);
+            itemsOccupiedTiles.add(pileKey);
             updatedDwarf.currentTask = {
               type: 'hauling',
               targetX: stockpilePos.x,
@@ -472,6 +510,17 @@ export function runSimulationTick(
     // 3. Task Execution (if dwarf already has a task)
     const task = updatedDwarf.currentTask;
 
+    // Item-targeted task validation (drinking, eating, hauling)
+    // If the targeted item was consumed or picked up by another dwarf, cancel task immediately
+    if ((task.type === 'drinking' || task.type === 'eating' || task.type === 'hauling') && task.targetItemId) {
+      const targetItemExists = items.some(it => it.id === task.targetItemId);
+      if (!targetItemExists) {
+        updatedDwarf.currentTask = null;
+        updatedDwarf.path = [];
+        return updatedDwarf;
+      }
+    }
+
     // Movement towards task target
     if (updatedDwarf.path && updatedDwarf.path.length > 1) {
       // Pop next step from path
@@ -501,6 +550,7 @@ export function runSimulationTick(
           targetTile.hardness = 0;
           targetTile.designation = 'none';
           targetTile.isRevealed = true;
+          updateTileInTaskIndex(taskIndex, task.targetX, task.targetY, task.targetZ, { designation: 'mine', stockpile: targetTile.stockpile, material: previousMaterial }, targetTile);
 
           // Reveal adjacent hidden tiles
           for (let dz = -1; dz <= 1; dz++) {
@@ -585,9 +635,11 @@ export function runSimulationTick(
       } else if (task.type === 'chopping') {
         const targetTile = tiles[task.targetZ]?.[task.targetY]?.[task.targetX];
         if (targetTile) {
+          const previousMaterial = targetTile.material;
           targetTile.material = 'grass';
           targetTile.hardness = 5;
           targetTile.designation = 'none';
+          updateTileInTaskIndex(taskIndex, task.targetX, task.targetY, task.targetZ, { designation: 'chop', stockpile: targetTile.stockpile, material: previousMaterial }, targetTile);
 
           // Clear foliage above if present
           if (task.targetZ + 1 < depthZ && tiles[task.targetZ + 1][task.targetY][task.targetX].material === 'tree_foliage') {
@@ -613,6 +665,7 @@ export function runSimulationTick(
         const targetTile = tiles[task.targetZ]?.[task.targetY]?.[task.targetX];
         if (targetTile) {
           const designation = targetTile.designation;
+          const previousMaterial = targetTile.material;
           if (designation === 'build_wall') {
             targetTile.material = 'wall_constructed';
             targetTile.hardness = 80;
@@ -630,6 +683,7 @@ export function runSimulationTick(
             targetTile.hardness = 60;
           }
           targetTile.designation = 'none';
+          updateTileInTaskIndex(taskIndex, task.targetX, task.targetY, task.targetZ, { designation, stockpile: targetTile.stockpile, material: previousMaterial }, targetTile);
           wealth += 30;
           updatedDwarf.skills.masonry.xp += 25;
           updatedDwarf.needs.work = Math.min(100, updatedDwarf.needs.work + 30);
@@ -642,30 +696,51 @@ export function runSimulationTick(
             itemToMove.x = task.targetX;
             itemToMove.y = task.targetY;
             itemToMove.z = task.targetZ;
+            itemToMove.claimedByDwarfId = undefined;
           }
         }
         updatedDwarf.skills.hauling.xp += 15;
         updatedDwarf.needs.work = Math.min(100, updatedDwarf.needs.work + 15);
       } else if (task.type === 'drinking') {
-        updatedDwarf.needs.thirst = 100;
-        updatedDwarf.thoughts.unshift({
-          id: `thought_drink_${nextTick}`,
-          textEn: 'Drank a refreshing dwarven ale out of a fine goblet.',
-          textUa: 'Випив чудового гном’ячого елю з кубка.',
-          positive: true,
-          timestamp: nextTick
-        });
-        if (updatedDwarf.thoughts.length > 8) updatedDwarf.thoughts.pop();
+        const itemIdx = task.targetItemId ? items.findIndex(it => it.id === task.targetItemId) : -1;
+        if (itemIdx !== -1) {
+          // Consume item from world items
+          items.splice(itemIdx, 1);
+          updatedDwarf.needs.thirst = 100;
+          updatedDwarf.thoughts.unshift({
+            id: `thought_drink_${nextTick}`,
+            textEn: 'Drank a refreshing dwarven ale out of a fine goblet.',
+            textUa: 'Випив чудового гном’ячого елю з кубка.',
+            positive: true,
+            timestamp: nextTick
+          });
+          if (updatedDwarf.thoughts.length > 8) updatedDwarf.thoughts.pop();
+        } else {
+          // Targeted item is no longer available; cancel task without satisfying thirst
+          updatedDwarf.currentTask = null;
+          updatedDwarf.path = [];
+          return updatedDwarf;
+        }
       } else if (task.type === 'eating') {
-        updatedDwarf.needs.hunger = 100;
-        updatedDwarf.thoughts.unshift({
-          id: `thought_eat_${nextTick}`,
-          textEn: 'Ate delicious plump helmet roast.',
-          textUa: 'З’їв смажені гриби-товстошоломники.',
-          positive: true,
-          timestamp: nextTick
-        });
-        if (updatedDwarf.thoughts.length > 8) updatedDwarf.thoughts.pop();
+        const itemIdx = task.targetItemId ? items.findIndex(it => it.id === task.targetItemId) : -1;
+        if (itemIdx !== -1) {
+          // Consume item from world items
+          items.splice(itemIdx, 1);
+          updatedDwarf.needs.hunger = 100;
+          updatedDwarf.thoughts.unshift({
+            id: `thought_eat_${nextTick}`,
+            textEn: 'Ate delicious plump helmet roast.',
+            textUa: 'З’їв смажені гриби-товстошоломники.',
+            positive: true,
+            timestamp: nextTick
+          });
+          if (updatedDwarf.thoughts.length > 8) updatedDwarf.thoughts.pop();
+        } else {
+          // Targeted item is no longer available; cancel task without satisfying hunger
+          updatedDwarf.currentTask = null;
+          updatedDwarf.path = [];
+          return updatedDwarf;
+        }
       } else if (task.type === 'sleeping') {
         updatedDwarf.needs.sleep = 100;
       }
@@ -722,6 +797,33 @@ export function runSimulationTick(
     return { ...creature, z: cz };
   });
 
+  // Fog of War: Reveal tiles in radius 4 around each dwarf
+  const DWARF_VISION_RADIUS = 4;
+  for (const dwarf of dwarves) {
+    const minZ = Math.max(0, dwarf.z - 2);
+    const maxZ = Math.min(depthZ - 1, dwarf.z + 2);
+    const minY = Math.max(0, dwarf.y - DWARF_VISION_RADIUS);
+    const maxY = Math.min(sizeY - 1, dwarf.y + DWARF_VISION_RADIUS);
+    const minX = Math.max(0, dwarf.x - DWARF_VISION_RADIUS);
+    const maxX = Math.min(sizeX - 1, dwarf.x + DWARF_VISION_RADIUS);
+
+    for (let z = minZ; z <= maxZ; z++) {
+      const dz = z - dwarf.z;
+      for (let y = minY; y <= maxY; y++) {
+        const dy = y - dwarf.y;
+        for (let x = minX; x <= maxX; x++) {
+          const dx = x - dwarf.x;
+          if (dx * dx + dy * dy + dz * dz <= DWARF_VISION_RADIUS * DWARF_VISION_RADIUS) {
+            const t = tiles[z]?.[y]?.[x];
+            if (t && !t.isRevealed) {
+              t.isRevealed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return {
     ...state,
     tick: nextTick,
@@ -732,12 +834,29 @@ export function runSimulationTick(
     dwarves,
     creatures,
     items,
+    taskIndex,
     stockpilesCounts: {
-      stone: stockpileStoneCount,
-      wood: stockpileWoodCount,
-      food: stockpileFoodCount,
-      ore: stockpileOreCount,
-      ale: stockpileAleCount
+      stone: totalStoneCount,
+      wood: totalWoodCount,
+      food: totalFoodCount,
+      ore: totalOreCount,
+      ale: totalAleCount
+    },
+    stocksBreakdown: {
+      totalOnMap: {
+        stone: totalStoneCount,
+        wood: totalWoodCount,
+        food: totalFoodCount,
+        ore: totalOreCount,
+        ale: totalAleCount
+      },
+      inStockpile: {
+        stone: stockpileStoneCount,
+        wood: stockpileWoodCount,
+        food: stockpileFoodCount,
+        ore: stockpileOreCount,
+        ale: stockpileAleCount
+      }
     }
   };
 }

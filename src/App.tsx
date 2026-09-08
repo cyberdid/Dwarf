@@ -33,6 +33,8 @@ import { OverworldView } from './components/OverworldView';
 import { DfAiToolbar } from './components/DfAiToolbar';
 import { DfHackConsoleModal } from './components/DfHackConsoleModal';
 import { DfAiState, INITIAL_DF_AI_STATE, executeDfAiStep } from './engine/dfAiClient';
+import { canPlaceBuilding } from './engine/buildingRules';
+import { buildTaskIndex, updateTileInTaskIndex } from './engine/taskIndex';
 
 export default function App() {
   // Application Language & Navigation State
@@ -67,9 +69,18 @@ export default function App() {
     })
   );
 
+  // Stable references for DF-AI autonomous tick loops
+  const fortressStateRef = useRef(fortressState);
+  fortressStateRef.current = fortressState;
+  const overworldStateRef = useRef(overworldState);
+  overworldStateRef.current = overworldState;
+  const aiStateRef = useRef(aiState);
+  aiStateRef.current = aiState;
+
   // View & Tool States
   const [currentZ, setCurrentZ] = useState<number>(() => fortressState.surfaceZ);
   const [renderMode, setRenderMode] = useState<'ascii' | 'graphic'>('graphic');
+  const [revealAll, setRevealAll] = useState<boolean>(false);
   const [selectedTool, setSelectedTool] = useState<string>('inspect');
   const [selectedDwarf, setSelectedDwarf] = useState<DwarfEntity | null>(null);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
@@ -107,13 +118,16 @@ export default function App() {
   ]);
 
   const addEvent = useCallback((eventData: Omit<FortressEvent, 'id'>) => {
-    setEvents(prev => [
-      ...prev,
-      {
-        ...eventData,
-        id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
-      }
-    ]);
+    setEvents(prev => {
+      const next = [
+        ...prev,
+        {
+          ...eventData,
+          id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+        }
+      ];
+      return next.length > 300 ? next.slice(-300) : next;
+    });
   }, []);
 
   // Main Simulation Tick Runner
@@ -178,11 +192,15 @@ export default function App() {
     }));
 
     try {
-      const activeDirective = customDirective !== undefined ? customDirective : aiState.directive;
+      const currentAiState = aiStateRef.current;
+      const currentFortressState = fortressStateRef.current;
+      const currentOverworldState = overworldStateRef.current;
+
+      const activeDirective = customDirective !== undefined ? customDirective : currentAiState.directive;
       const { updatedFortress, updatedOverworld, updatedAiState } = await executeDfAiStep(
-        fortressState,
-        overworldState,
-        { ...aiState, directive: activeDirective },
+        currentFortressState,
+        currentOverworldState,
+        { ...currentAiState, directive: activeDirective },
         addEvent
       );
       setFortressState(updatedFortress);
@@ -194,7 +212,7 @@ export default function App() {
     } finally {
       isExecutingAiRef.current = false;
     }
-  }, [fortressState, overworldState, aiState, addEvent]);
+  }, [addEvent]);
 
   // DF-AI Autonomous Autopilot Loop
   useEffect(() => {
@@ -204,7 +222,7 @@ export default function App() {
     }, aiState.cycleIntervalSeconds * 1000);
 
     return () => clearInterval(intervalTimer);
-  }, [aiState.isActive, aiState.cycleIntervalSeconds, handleRunDfAiStep]);
+  }, [aiState.isActive, aiState.cycleIntervalSeconds]);
 
   // DFHack command terminal executor
   const handleSendDfHackCommand = (cmd: string) => {
@@ -256,6 +274,50 @@ export default function App() {
             type: 'info',
             terminalCommand: 'df-ai status',
             text: `[df-ai:status] Model: ${prev.aiModel} | Status: ${prev.statusSummary} | Directive: "${prev.directive}" | Active: ${prev.isActive} | Cycles: ${prev.totalCyclesExecuted}`,
+          },
+        ],
+      }));
+    } else if (cleanCmd === 'reveal' || cleanCmd === 'reveal map' || cleanCmd === 'reveal all') {
+      setRevealAll(true);
+      setAiState(prev => ({
+        ...prev,
+        terminalLogs: [
+          ...prev.terminalLogs,
+          {
+            id: `cmd_${Date.now()}`,
+            timestamp: timeStr,
+            type: 'action',
+            terminalCommand: cleanCmd,
+            text: '[DFHack] Map fully revealed (debug mode). Fog of war bypassed across all strata.',
+          },
+        ],
+      }));
+    } else if (cleanCmd === 'unreveal' || cleanCmd === 'hide map' || cleanCmd === 'fow on') {
+      setRevealAll(false);
+      setAiState(prev => ({
+        ...prev,
+        terminalLogs: [
+          ...prev.terminalLogs,
+          {
+            id: `cmd_${Date.now()}`,
+            timestamp: timeStr,
+            type: 'info',
+            terminalCommand: cleanCmd,
+            text: '[DFHack] Map unrevealed. Fog of war restored (dwarf vision radius 4).',
+          },
+        ],
+      }));
+    } else if (cleanCmd === 'help') {
+      setAiState(prev => ({
+        ...prev,
+        terminalLogs: [
+          ...prev.terminalLogs,
+          {
+            id: `cmd_${Date.now()}`,
+            timestamp: timeStr,
+            type: 'info',
+            terminalCommand: 'help',
+            text: '[DFHack] Available commands: reveal | unreveal | enable df-ai | disable df-ai | df-ai step | df-ai status | or type instructions for Gemini Overseer.',
           },
         ],
       }));
@@ -364,7 +426,7 @@ export default function App() {
           updatedTile.designation = 'gather' as DesignationType;
         }
       } else if (tool.startsWith('build_')) {
-        if (updatedTile.material === 'air' || updatedTile.material === 'grass') {
+        if (canPlaceBuilding(updatedTile, tool)) {
           updatedTile.designation = tool as DesignationType;
         }
       } else if (tool.startsWith('stockpile_')) {
@@ -376,7 +438,9 @@ export default function App() {
       }
 
       nextTiles[z][y][x] = updatedTile;
-      return { ...prev, tiles: nextTiles };
+      const taskIndex = prev.taskIndex || buildTaskIndex(nextTiles);
+      updateTileInTaskIndex(taskIndex, x, y, z, targetTile, updatedTile);
+      return { ...prev, tiles: nextTiles, taskIndex };
     });
   };
 
@@ -658,12 +722,14 @@ export default function App() {
         speed={speed}
         renderMode={renderMode}
         activeTab={activeTab}
+        revealAll={revealAll}
         lang={lang}
         onTogglePlay={() => setIsRunning(r => !r)}
         onStepTick={() => tickRef.current()}
         onChangeSpeed={s => setSpeed(s)}
         onChangeZ={delta => setCurrentZ(z => Math.max(0, Math.min(fortressState.depthZ - 1, z + delta)))}
         onToggleRenderMode={() => setRenderMode(m => (m === 'ascii' ? 'graphic' : 'ascii'))}
+        onToggleRevealAll={() => setRevealAll(r => !r)}
         onSwitchTab={tab => setActiveTab(tab)}
         onToggleLang={() => setLang(l => (l === 'ua' ? 'en' : 'ua'))}
         onAddDwarf={handleAddDwarf}
@@ -720,6 +786,7 @@ export default function App() {
                 }}
                 onApplyDesignation={handleApplyDesignation}
                 aiHighlights={aiState.highlightedTiles}
+                revealAll={revealAll}
                 lang={lang}
               />
 
@@ -738,6 +805,7 @@ export default function App() {
                   }
                   onJumpToZ={z => setCurrentZ(z)}
                   onPanToWorld={handlePanToWorld}
+                  revealAll={revealAll}
                   lang={lang}
                 />
               </div>
@@ -818,6 +886,8 @@ export default function App() {
         }}
         onRunStep={() => handleRunDfAiStep()}
         onSendCommand={handleSendDfHackCommand}
+        revealAll={revealAll}
+        onToggleRevealAll={() => setRevealAll(r => !r)}
         lang={lang}
       />
 

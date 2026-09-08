@@ -14,6 +14,8 @@ import {
   ZoneType,
 } from '../types/simulation';
 import { dispatchExpedition } from './overworldGen';
+import { canPlaceBuilding } from './buildingRules';
+import { buildTaskIndex, updateTileInTaskIndex } from './taskIndex';
 
 export interface DfAiLogEntry {
   id: string;
@@ -147,7 +149,27 @@ export function buildFortressSummary(fortress: FortressState) {
     wealth,
     surfaceZ,
     currentZ: surfaceZ,
-    stocks: stockpilesCounts,
+    stocks: {
+      stone: stockpilesCounts.stone,
+      wood: stockpilesCounts.wood,
+      food: stockpilesCounts.food,
+      ore: stockpilesCounts.ore,
+      ale: stockpilesCounts.ale,
+      totalOnMap: fortress.stocksBreakdown?.totalOnMap || {
+        stone: stockpilesCounts.stone,
+        wood: stockpilesCounts.wood,
+        food: stockpilesCounts.food,
+        ore: stockpilesCounts.ore,
+        ale: stockpilesCounts.ale
+      },
+      inStockpile: fortress.stocksBreakdown?.inStockpile || {
+        stone: stockpilesCounts.stone,
+        wood: stockpilesCounts.wood,
+        food: stockpilesCounts.food,
+        ore: stockpilesCounts.ore,
+        ale: stockpilesCounts.ale
+      }
+    },
     dwarves: compactDwarves,
     creatures: compactCreatures,
     unminedOres,
@@ -266,6 +288,7 @@ export async function executeDfAiStep(
   // Deep copy tiles to apply commands
   const newTiles = fortress.tiles.map(layer => layer.map(row => row.map(tile => ({ ...tile }))));
   const newHighlights: { x: number; y: number; z: number; type: string }[] = [];
+  const taskIndex = fortress.taskIndex || buildTaskIndex(newTiles);
 
   const { commands } = responseData;
 
@@ -275,9 +298,10 @@ export async function executeDfAiStep(
       if (newTiles[m.z]?.[m.y]?.[m.x]) {
         const t = newTiles[m.z][m.y][m.x];
         if (t.material !== 'air' && t.material !== 'floor_stone' && t.material !== 'floor_dirt') {
+          const oldT = { designation: t.designation, stockpile: t.stockpile, material: t.material };
           t.designation = 'mine';
-          t.isRevealed = true;
           newHighlights.push({ x: m.x, y: m.y, z: m.z, type: 'mine' });
+          updateTileInTaskIndex(taskIndex, m.x, m.y, m.z, oldT, t);
         }
       }
     }
@@ -289,8 +313,10 @@ export async function executeDfAiStep(
       if (newTiles[c.z]?.[c.y]?.[c.x]) {
         const t = newTiles[c.z][c.y][c.x];
         if (t.material === 'tree_trunk') {
+          const oldT = { designation: t.designation, stockpile: t.stockpile, material: t.material };
           t.designation = 'chop';
           newHighlights.push({ x: c.x, y: c.y, z: c.z, type: 'chop' });
+          updateTileInTaskIndex(taskIndex, c.x, c.y, c.z, oldT, t);
         }
       }
     }
@@ -301,9 +327,12 @@ export async function executeDfAiStep(
     for (const b of commands.build) {
       if (newTiles[b.z]?.[b.y]?.[b.x]) {
         const t = newTiles[b.z][b.y][b.x];
-        t.designation = b.type as DesignationType;
-        t.isRevealed = true;
-        newHighlights.push({ x: b.x, y: b.y, z: b.z, type: b.type });
+        if (canPlaceBuilding(t, b.type)) {
+          const oldT = { designation: t.designation, stockpile: t.stockpile, material: t.material };
+          t.designation = b.type as DesignationType;
+          newHighlights.push({ x: b.x, y: b.y, z: b.z, type: b.type });
+          updateTileInTaskIndex(taskIndex, b.x, b.y, b.z, oldT, t);
+        }
       }
     }
   }
@@ -314,7 +343,10 @@ export async function executeDfAiStep(
       for (let y = Math.min(s.y1, s.y2); y <= Math.max(s.y1, s.y2); y++) {
         for (let x = Math.min(s.x1, s.x2); x <= Math.max(s.x1, s.x2); x++) {
           if (newTiles[s.z]?.[y]?.[x]) {
-            newTiles[s.z][y][x].stockpile = s.type as StockpileType;
+            const t = newTiles[s.z][y][x];
+            const oldT = { designation: t.designation, stockpile: t.stockpile, material: t.material };
+            t.stockpile = s.type as StockpileType;
+            updateTileInTaskIndex(taskIndex, x, y, s.z, oldT, t);
           }
         }
       }
@@ -422,6 +454,7 @@ export async function executeDfAiStep(
     ...fortress,
     tiles: newTiles,
     items,
+    taskIndex,
   };
 
   return {

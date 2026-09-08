@@ -15,6 +15,70 @@ interface Node {
   parent: Node | null;
 }
 
+class BinaryHeap {
+  private data: Node[] = [];
+
+  get size(): number {
+    return this.data.length;
+  }
+
+  push(item: Node): void {
+    this.data.push(item);
+    this.bubbleUp(this.data.length - 1);
+  }
+
+  pop(): Node | undefined {
+    if (this.data.length === 0) return undefined;
+    const top = this.data[0];
+    const bottom = this.data.pop()!;
+    if (this.data.length > 0) {
+      this.data[0] = bottom;
+      this.bubbleDown(0);
+    }
+    return top;
+  }
+
+  private bubbleUp(index: number): void {
+    const item = this.data[index];
+    while (index > 0) {
+      const parentIndex = (index - 1) >> 1;
+      const parent = this.data[parentIndex];
+      if (item.f < parent.f) {
+        this.data[index] = parent;
+        index = parentIndex;
+      } else {
+        break;
+      }
+    }
+    this.data[index] = item;
+  }
+
+  private bubbleDown(index: number): void {
+    const length = this.data.length;
+    const item = this.data[index];
+    while (true) {
+      const leftIndex = (index << 1) + 1;
+      const rightIndex = leftIndex + 1;
+      let smallestIndex = index;
+
+      if (leftIndex < length && this.data[leftIndex].f < this.data[smallestIndex].f) {
+        smallestIndex = leftIndex;
+      }
+      if (rightIndex < length && this.data[rightIndex].f < this.data[smallestIndex].f) {
+        smallestIndex = rightIndex;
+      }
+
+      if (smallestIndex !== index) {
+        this.data[index] = this.data[smallestIndex];
+        index = smallestIndex;
+      } else {
+        break;
+      }
+    }
+    this.data[index] = item;
+  }
+}
+
 export function findPath3D(
   startX: number,
   startY: number,
@@ -80,37 +144,32 @@ export function findPath3D(
     return Math.abs(x - targetX) + Math.abs(y - targetY) + Math.abs(z - targetZ) * 2;
   };
 
-  const openSet: Node[] = [];
+  const openHeap = new BinaryHeap();
+  const gScores = new Map<string, number>();
   const closedSet: Set<string> = new Set();
 
+  const startH = heuristic(startX, startY, startZ);
   const startNode: Node = {
     x: startX,
     y: startY,
     z: startZ,
     g: 0,
-    h: heuristic(startX, startY, startZ),
-    f: heuristic(startX, startY, startZ),
+    h: startH,
+    f: startH,
     parent: null
   };
 
-  openSet.push(startNode);
+  openHeap.push(startNode);
+  gScores.set(`${startX},${startY},${startZ}`, 0);
 
-  // Maximum exploration steps to avoid freezing on trapped entities
+  // Maximum exploration steps proportional to map size (sizeX * sizeY / 4)
+  const maxSteps = Math.max(800, Math.floor((sizeX * sizeY) / 4));
   let steps = 0;
-  const maxSteps = 450;
 
-  while (openSet.length > 0 && steps < maxSteps) {
+  while (openHeap.size > 0 && steps < maxSteps) {
     steps++;
 
-    // Find node with lowest f
-    let bestIndex = 0;
-    for (let i = 1; i < openSet.length; i++) {
-      if (openSet[i].f < openSet[bestIndex].f) {
-        bestIndex = i;
-      }
-    }
-
-    const current = openSet.splice(bestIndex, 1)[0];
+    const current = openHeap.pop()!;
     const key = `${current.x},${current.y},${current.z}`;
 
     // Target reached check
@@ -128,7 +187,13 @@ export function findPath3D(
       return reconstructPath(current);
     }
 
+    if (closedSet.has(key)) continue;
     closedSet.add(key);
+
+    const bestG = gScores.get(key);
+    if (bestG !== undefined && current.g > bestG) {
+      continue;
+    }
 
     // Neighbors: 4 cardinal directions, plus 1 Z-level transitions
     const neighbors: [number, number, number][] = [
@@ -164,25 +229,22 @@ export function findPath3D(
       }
 
       const moveCost = (nx !== current.x && ny !== current.y ? 1.414 : 1.0) + (nz !== current.z ? 1.8 : 0);
-      const gScore = current.g + moveCost;
+      const neighborG = current.g + moveCost;
 
-      let neighborNode = openSet.find(n => n.x === nx && n.y === ny && n.z === nz);
-
-      if (!neighborNode) {
-        neighborNode = {
+      const existingG = gScores.get(nKey);
+      if (existingG === undefined || neighborG < existingG) {
+        gScores.set(nKey, neighborG);
+        const neighborH = heuristic(nx, ny, nz);
+        const neighborNode: Node = {
           x: nx,
           y: ny,
           z: nz,
-          g: gScore,
-          h: heuristic(nx, ny, nz),
-          f: gScore + heuristic(nx, ny, nz),
+          g: neighborG,
+          h: neighborH,
+          f: neighborG + neighborH,
           parent: current
         };
-        openSet.push(neighborNode);
-      } else if (gScore < neighborNode.g) {
-        neighborNode.g = gScore;
-        neighborNode.f = gScore + neighborNode.h;
-        neighborNode.parent = current;
+        openHeap.push(neighborNode);
       }
     }
   }

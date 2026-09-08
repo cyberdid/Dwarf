@@ -157,6 +157,29 @@ export interface WorldItem {
   claimedByDwarfId?: string;
 }
 
+export interface Coord3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface BuildTargetCoord extends Coord3D {
+  type: string;
+}
+
+export interface TaskIndex {
+  mining: Map<string, Coord3D>;
+  chopping: Map<string, Coord3D>;
+  building: Map<string, BuildTargetCoord>;
+  stockpiles: {
+    stone: Map<string, Coord3D>;
+    wood: Map<string, Coord3D>;
+    food: Map<string, Coord3D>;
+    ore: Map<string, Coord3D>;
+  };
+  beds: Map<string, Coord3D>;
+}
+
 export type Season = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 
 export interface FortressState {
@@ -168,12 +191,29 @@ export interface FortressState {
   dwarves: DwarfEntity[];
   creatures: CreatureEntity[];
   items: WorldItem[];
+  taskIndex?: TaskIndex;
   stockpilesCounts: {
     stone: number;
     wood: number;
     food: number;
     ore: number;
     ale: number;
+  };
+  stocksBreakdown?: {
+    totalOnMap: {
+      stone: number;
+      wood: number;
+      food: number;
+      ore: number;
+      ale: number;
+    };
+    inStockpile: {
+      stone: number;
+      wood: number;
+      food: number;
+      ore: number;
+      ale: number;
+    };
   };
   wealth: number;
   year: number;

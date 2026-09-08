@@ -28,6 +28,7 @@ interface FortressCanvasProps {
   onSelectTile: (tile: Tile | null) => void;
   onApplyDesignation: (x: number, y: number, z: number, tool: string) => void;
   aiHighlights?: { x: number; y: number; z: number; type: string }[];
+  revealAll?: boolean;
   lang: 'en' | 'ua';
 }
 
@@ -45,6 +46,7 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
   onSelectTile,
   onApplyDesignation,
   aiHighlights = [],
+  revealAll = false,
   lang
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -155,7 +157,7 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
     ctx.translate(pan.x, pan.y);
     ctx.scale(zoom, zoom);
 
-    const { sizeX, sizeY, tiles, dwarves, creatures, items, tick } = state;
+    const { sizeX, sizeY, depthZ, tiles, dwarves, creatures, items, tick } = state;
 
     // Viewport Frustum Culling bounds for optimal 60 FPS on huge maps
     const canvasCssWidth = canvas.width / dpr;
@@ -179,104 +181,193 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
       return Math.max(0.38, 1.0 - depthDelta * 0.16);
     };
 
-    // 1. Multi-Z Continuous World Rendering
+    // Fog of War: helper to check if tile (tx, ty, tz) is adjacent to any revealed tile
+    const isAdjacentToRevealed = (tx: number, ty: number, tz: number) => {
+      const zTiles = tiles[tz];
+      if (!zTiles) return false;
+      return Boolean(
+        zTiles[ty - 1]?.[tx]?.isRevealed ||
+        zTiles[ty + 1]?.[tx]?.isRevealed ||
+        zTiles[ty]?.[tx - 1]?.isRevealed ||
+        zTiles[ty]?.[tx + 1]?.isRevealed ||
+        zTiles[ty - 1]?.[tx - 1]?.isRevealed ||
+        zTiles[ty - 1]?.[tx + 1]?.isRevealed ||
+        zTiles[ty + 1]?.[tx - 1]?.isRevealed ||
+        zTiles[ty + 1]?.[tx + 1]?.isRevealed ||
+        (tz > 0 && tiles[tz - 1]?.[ty]?.[tx]?.isRevealed) ||
+        (tz < depthZ - 1 && tiles[tz + 1]?.[ty]?.[tx]?.isRevealed)
+      );
+    };
+
+    // 1. Multi-Z Continuous World Rendering with Authentic DF Fog of War
     // Displays the current Z-level and gazes down through open air columns to render lower terrain terraces and valleys seamlessly
     for (let y = minVisibleY; y <= maxVisibleY; y++) {
       for (let x = minVisibleX; x <= maxVisibleX; x++) {
         const posX = x * TILE_SIZE;
         const posY = y * TILE_SIZE;
         const currentTile = tiles[currentZ]?.[y]?.[x];
+        const isRevealed = revealAll || Boolean(currentTile?.isRevealed);
 
         if (currentTile && currentTile.material !== 'air') {
-          // A. Current Z-Level Solid / Floor / Water Tile (Full Brightness)
-          if (renderMode === 'graphic') {
-            const neighbors = {
-              north: tiles[currentZ]?.[y - 1]?.[x],
-              south: tiles[currentZ]?.[y + 1]?.[x],
-              east: tiles[currentZ]?.[y]?.[x + 1],
-              west: tiles[currentZ]?.[y]?.[x - 1],
-              northWest: tiles[currentZ]?.[y - 1]?.[x - 1],
-              northEast: tiles[currentZ]?.[y - 1]?.[x + 1],
-              southWest: tiles[currentZ]?.[y + 1]?.[x - 1],
-              southEast: tiles[currentZ]?.[y + 1]?.[x + 1]
-            };
-            drawSteamTile(ctx, currentTile, posX, posY, neighbors, tick);
+          if (isRevealed) {
+            // A. Current Z-Level Solid / Floor / Water Tile (Full Brightness)
+            if (renderMode === 'graphic') {
+              const neighbors = {
+                north: tiles[currentZ]?.[y - 1]?.[x],
+                south: tiles[currentZ]?.[y + 1]?.[x],
+                east: tiles[currentZ]?.[y]?.[x + 1],
+                west: tiles[currentZ]?.[y]?.[x - 1],
+                northWest: tiles[currentZ]?.[y - 1]?.[x - 1],
+                northEast: tiles[currentZ]?.[y - 1]?.[x + 1],
+                southWest: tiles[currentZ]?.[y + 1]?.[x - 1],
+                southEast: tiles[currentZ]?.[y + 1]?.[x + 1]
+              };
+              drawSteamTile(ctx, currentTile, posX, posY, neighbors, tick);
+            } else {
+              drawAsciiTile(ctx, currentTile, posX, posY);
+            }
+
+            // Stockpile boundary border
+            if (currentTile.stockpile !== 'none') {
+              ctx.strokeStyle = getStockpileBorderColor(currentTile.stockpile);
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 2]);
+              ctx.strokeRect(posX + 1.5, posY + 1.5, TILE_SIZE - 3, TILE_SIZE - 3);
+              ctx.setLineDash([]);
+            }
+
+            // Designation overlay (Mining, Chopping, Building)
+            if (currentTile.designation !== 'none') {
+              drawDesignationOverlay(ctx, currentTile.designation, posX, posY);
+            }
+
+            // DF-AI autonomous planned indicator
+            const isAiPlanned = aiHighlights.some(h => h.x === x && h.y === y && h.z === currentZ);
+            if (isAiPlanned) {
+              ctx.save();
+              ctx.strokeStyle = '#38bdf8';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(posX + 2, posY + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+              ctx.fillStyle = '#0284c7';
+              ctx.font = '8px monospace';
+              ctx.fillText('AI', posX + 3, posY + 9);
+              ctx.restore();
+            }
           } else {
-            drawAsciiTile(ctx, currentTile, posX, posY);
-          }
-
-          // Stockpile boundary border
-          if (currentTile.stockpile !== 'none') {
-            ctx.strokeStyle = getStockpileBorderColor(currentTile.stockpile);
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([4, 2]);
-            ctx.strokeRect(posX + 1.5, posY + 1.5, TILE_SIZE - 3, TILE_SIZE - 3);
-            ctx.setLineDash([]);
-          }
-
-          // Designation overlay (Mining, Chopping, Building)
-          if (currentTile.designation !== 'none') {
-            drawDesignationOverlay(ctx, currentTile.designation, posX, posY);
-          }
-
-          // DF-AI autonomous planned indicator
-          const isAiPlanned = aiHighlights.some(h => h.x === x && h.y === y && h.z === currentZ);
-          if (isAiPlanned) {
-            ctx.save();
-            ctx.strokeStyle = '#38bdf8';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(posX + 2, posY + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-            ctx.fillStyle = '#0284c7';
-            ctx.font = '8px monospace';
-            ctx.fillText('AI', posX + 3, posY + 9);
-            ctx.restore();
+            // Unrevealed tile: check if adjacent to any revealed tile
+            const isAdjacent = isAdjacentToRevealed(x, y, currentZ);
+            if (isAdjacent) {
+              // Dimmed / muted presentation for tiles adjacent to the exploration boundary
+              ctx.save();
+              ctx.globalAlpha = 0.35;
+              if (renderMode === 'graphic') {
+                const neighbors = {
+                  north: tiles[currentZ]?.[y - 1]?.[x],
+                  south: tiles[currentZ]?.[y + 1]?.[x],
+                  east: tiles[currentZ]?.[y]?.[x + 1],
+                  west: tiles[currentZ]?.[y]?.[x - 1],
+                  northWest: tiles[currentZ]?.[y - 1]?.[x - 1],
+                  northEast: tiles[currentZ]?.[y - 1]?.[x + 1],
+                  southWest: tiles[currentZ]?.[y + 1]?.[x - 1],
+                  southEast: tiles[currentZ]?.[y + 1]?.[x + 1]
+                };
+                drawSteamTile(ctx, currentTile, posX, posY, neighbors, tick);
+              } else {
+                drawAsciiTile(ctx, currentTile, posX, posY);
+              }
+              // Dark shroud overlay to dim details
+              ctx.fillStyle = 'rgba(10, 9, 8, 0.45)';
+              ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
+              ctx.restore();
+            } else {
+              // Hidden unrevealed tiles: solid dark color without details
+              ctx.fillStyle = '#080706';
+              ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
+            }
           }
         } else {
-          // B. Current Tile is Air: Look down to lower strata (Dwarf Fortress Steam multi-Z view)
-          let lowerGroundZ = -1;
-          for (let z = currentZ - 1; z >= 0; z--) {
-            const candidate = tiles[z]?.[y]?.[x];
-            if (candidate && candidate.material !== 'air') {
-              lowerGroundZ = z;
-              break;
+          // B. Current Tile is Air
+          if (isRevealed) {
+            let lowerGroundZ = -1;
+            for (let z = currentZ - 1; z >= 0; z--) {
+              const candidate = tiles[z]?.[y]?.[x];
+              if (candidate && candidate.material !== 'air') {
+                lowerGroundZ = z;
+                break;
+              }
             }
-          }
 
-          if (lowerGroundZ >= 0) {
-            const lowerTile = tiles[lowerGroundZ][y][x];
-            const depthDelta = currentZ - lowerGroundZ;
+            if (lowerGroundZ >= 0) {
+              const lowerTile = tiles[lowerGroundZ][y][x];
+              const isLowerRevealed = revealAll || Boolean(lowerTile.isRevealed);
+              const depthDelta = currentZ - lowerGroundZ;
 
-            if (renderMode === 'graphic') {
-              const lowerNeighbors = {
-                north: tiles[lowerGroundZ]?.[y - 1]?.[x],
-                south: tiles[lowerGroundZ]?.[y + 1]?.[x],
-                east: tiles[lowerGroundZ]?.[y]?.[x + 1],
-                west: tiles[lowerGroundZ]?.[y]?.[x - 1],
-                northWest: tiles[lowerGroundZ]?.[y - 1]?.[x - 1],
-                northEast: tiles[lowerGroundZ]?.[y - 1]?.[x + 1],
-                southWest: tiles[lowerGroundZ]?.[y + 1]?.[x - 1],
-                southEast: tiles[lowerGroundZ]?.[y + 1]?.[x + 1]
-              };
-              drawSteamTile(ctx, lowerTile, posX, posY, lowerNeighbors, tick);
+              if (isLowerRevealed) {
+                if (renderMode === 'graphic') {
+                  const lowerNeighbors = {
+                    north: tiles[lowerGroundZ]?.[y - 1]?.[x],
+                    south: tiles[lowerGroundZ]?.[y + 1]?.[x],
+                    east: tiles[lowerGroundZ]?.[y]?.[x + 1],
+                    west: tiles[lowerGroundZ]?.[y]?.[x - 1],
+                    northWest: tiles[lowerGroundZ]?.[y - 1]?.[x - 1],
+                    northEast: tiles[lowerGroundZ]?.[y - 1]?.[x + 1],
+                    southWest: tiles[lowerGroundZ]?.[y + 1]?.[x - 1],
+                    southEast: tiles[lowerGroundZ]?.[y + 1]?.[x + 1]
+                  };
+                  drawSteamTile(ctx, lowerTile, posX, posY, lowerNeighbors, tick);
+                } else {
+                  drawAsciiTile(ctx, lowerTile, posX, posY);
+                }
+
+                // Authentic DF depth fog overlay: darker the deeper the valley/terrace is
+                const fogDarkness = Math.min(0.68, depthDelta * 0.15);
+                ctx.fillStyle = `rgba(10, 9, 8, ${fogDarkness})`;
+                ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
+              } else if (isAdjacentToRevealed(x, y, lowerGroundZ)) {
+                // Lower ground is adjacent to revealed: dimmed
+                ctx.save();
+                ctx.globalAlpha = 0.35;
+                if (renderMode === 'graphic') {
+                  const lowerNeighbors = {
+                    north: tiles[lowerGroundZ]?.[y - 1]?.[x],
+                    south: tiles[lowerGroundZ]?.[y + 1]?.[x],
+                    east: tiles[lowerGroundZ]?.[y]?.[x + 1],
+                    west: tiles[lowerGroundZ]?.[y]?.[x - 1],
+                    northWest: tiles[lowerGroundZ]?.[y - 1]?.[x - 1],
+                    northEast: tiles[lowerGroundZ]?.[y - 1]?.[x + 1],
+                    southWest: tiles[lowerGroundZ]?.[y + 1]?.[x - 1],
+                    southEast: tiles[lowerGroundZ]?.[y + 1]?.[x + 1]
+                  };
+                  drawSteamTile(ctx, lowerTile, posX, posY, lowerNeighbors, tick);
+                } else {
+                  drawAsciiTile(ctx, lowerTile, posX, posY);
+                }
+                const fogDarkness = Math.min(0.85, depthDelta * 0.18 + 0.3);
+                ctx.fillStyle = `rgba(10, 9, 8, ${fogDarkness})`;
+                ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
+                ctx.restore();
+              } else {
+                ctx.fillStyle = '#080706';
+                ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
+              }
             } else {
-              drawAsciiTile(ctx, lowerTile, posX, posY);
+              // Abyss / void beneath the world
+              ctx.fillStyle = '#080706';
+              ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
             }
-
-            // Authentic DF depth fog overlay: darker the deeper the valley/terrace is
-            const fogDarkness = Math.min(0.68, depthDelta * 0.15);
-            ctx.fillStyle = `rgba(10, 9, 8, ${fogDarkness})`;
-            ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
           } else {
-            // Abyss / void beneath the world
-            ctx.fillStyle = '#080706';
+            // Unrevealed air column
+            const isAirAdjacent = isAdjacentToRevealed(x, y, currentZ);
+            ctx.fillStyle = isAirAdjacent ? '#141210' : '#080706';
             ctx.fillRect(posX, posY, TILE_SIZE, TILE_SIZE);
           }
         }
       }
     }
 
-    // 2. World Items (Barrels, Logs, Boulders, Ores)
+    // 2. World Items (Barrels, Logs, Boulders, Ores) - only drawn on revealed tiles unless revealAll
     for (const item of items) {
+      if (!revealAll && !tiles[item.z]?.[item.y]?.[item.x]?.isRevealed) continue;
       const alpha = getEntityDepthAlpha(item.z, item.x, item.y);
       if (alpha > 0) {
         const px = item.x * TILE_SIZE;
@@ -292,8 +383,9 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
       }
     }
 
-    // 3. Creatures (War Dogs, Goblin Scouts)
+    // 3. Creatures (War Dogs, Goblin Scouts) - only drawn on revealed tiles unless revealAll
     for (const creature of creatures) {
+      if (!revealAll && !tiles[creature.z]?.[creature.y]?.[creature.x]?.isRevealed) continue;
       const alpha = getEntityDepthAlpha(creature.z, creature.x, creature.y);
       if (alpha > 0) {
         const px = creature.x * TILE_SIZE;
@@ -525,17 +617,29 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
           <div>
             <span className="text-stone-400 font-cinzel text-[11px]">{lang === 'ua' ? 'Блок: ' : 'Tile: '}</span>
             <span className="text-amber-300 font-bold uppercase tracking-wider">
-              {state.tiles[hoveredTile.z]?.[hoveredTile.y]?.[hoveredTile.x]?.material || 'air'}
+              {(() => {
+                const targetTile = state.tiles[hoveredTile.z]?.[hoveredTile.y]?.[hoveredTile.x];
+                if (!revealAll && targetTile && !targetTile.isRevealed) {
+                  return lang === 'ua' ? 'Нерозвідано' : 'Unrevealed';
+                }
+                return targetTile?.material || 'air';
+              })()}
             </span>
           </div>
-          {state.tiles[hoveredTile.z]?.[hoveredTile.y]?.[hoveredTile.x]?.designation !== 'none' && (
-            <>
-              <div className="h-3 w-px bg-[#5a4522]" />
-              <div className="text-rose-400 font-bold">
-                ★ {state.tiles[hoveredTile.z]?.[hoveredTile.y]?.[hoveredTile.x]?.designation}
-              </div>
-            </>
-          )}
+          {(() => {
+            const targetTile = state.tiles[hoveredTile.z]?.[hoveredTile.y]?.[hoveredTile.x];
+            if ((revealAll || targetTile?.isRevealed) && targetTile?.designation !== 'none') {
+              return (
+                <>
+                  <div className="h-3 w-px bg-[#5a4522]" />
+                  <div className="text-rose-400 font-bold">
+                    ★ {targetTile?.designation}
+                  </div>
+                </>
+              );
+            }
+            return null;
+          })()}
         </div>
       )}
 

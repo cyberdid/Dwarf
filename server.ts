@@ -6,10 +6,59 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Primary Fast Gemini Model Identifier for Low-Latency Autonomous DF-AI
+const GEMINI_MODEL = "gemini-2.5-flash";
+
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "10mb" }));
+// Body payload limit constrained to 512 KB
+app.use(express.json({ limit: "512kb" }));
+
+// In-memory rate limiting: maximum 20 requests per minute per IP
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
+}
+const rateLimitMap = new Map<string, RateLimitRecord>();
+
+function rateLimitMiddleware(maxRequests = 20, windowMs = 60 * 1000) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const rawIp =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      req.ip ||
+      req.socket.remoteAddress ||
+      "127.0.0.1";
+    const now = Date.now();
+
+    // Housekeeping: periodic cleanup of expired records to prevent unbounded memory growth
+    if (rateLimitMap.size > 200) {
+      for (const [key, val] of rateLimitMap.entries()) {
+        if (now > val.resetAt) {
+          rateLimitMap.delete(key);
+        }
+      }
+    }
+
+    const current = rateLimitMap.get(rawIp);
+    if (!current || now > current.resetAt) {
+      rateLimitMap.set(rawIp, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (current.count >= maxRequests) {
+      const retryAfter = Math.ceil((current.resetAt - now) / 1000);
+      res.setHeader("Retry-After", String(retryAfter));
+      return res.status(429).json({
+        error: "Too Many Requests",
+        message: `Rate limit exceeded: maximum ${maxRequests} requests per minute from IP ${rawIp}. Please retry in ${retryAfter}s.`,
+      });
+    }
+
+    current.count++;
+    next();
+  };
+}
 
 // Initialize Gemini Client
 let geminiClient: GoogleGenAI | null = null;
@@ -27,13 +76,51 @@ function getGeminiClient(): GoogleGenAI | null {
   return geminiClient;
 }
 
-// Health Check API
-app.get("/api/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    aiEnabled: !!process.env.GEMINI_API_KEY,
-    timestamp: Date.now(),
-  });
+// Health Check API - active ping test against the Gemini model
+app.get("/api/health", async (_req, res) => {
+  const ai = getGeminiClient();
+  const hasKey = Boolean(process.env.GEMINI_API_KEY);
+
+  if (!hasKey || !ai) {
+    return res.status(503).json({
+      status: "degraded",
+      aiEnabled: false,
+      model: GEMINI_MODEL,
+      error: "GEMINI_API_KEY environment variable is not configured",
+      timestamp: Date.now(),
+    });
+  }
+
+  const start = Date.now();
+  try {
+    // Low-cost ping to verify model availability, valid API key, and model identifier
+    await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: "ping",
+      config: {
+        maxOutputTokens: 1,
+      },
+    });
+    const latencyMs = Date.now() - start;
+    return res.json({
+      status: "ok",
+      aiEnabled: true,
+      model: GEMINI_MODEL,
+      latencyMs,
+      timestamp: Date.now(),
+    });
+  } catch (err: any) {
+    const latencyMs = Date.now() - start;
+    console.error(`Gemini health check ping failed (${GEMINI_MODEL}):`, err?.message);
+    return res.status(502).json({
+      status: "error",
+      aiEnabled: true,
+      model: GEMINI_MODEL,
+      latencyMs,
+      error: err?.message || "Model ping failed",
+      timestamp: Date.now(),
+    });
+  }
 });
 
 /**
@@ -43,6 +130,9 @@ app.get("/api/health", (_req, res) => {
 function generateHeuristicDfAiPlan(body: any) {
   const { fortressSummary, overworldSummary, directive } = body;
   const stocks = fortressSummary?.stocks || { food: 20, ale: 15, wood: 20, stone: 50 };
+  const totalAle = stocks.totalOnMap?.ale ?? stocks.ale ?? 0;
+  const inStockpileAle = stocks.inStockpile?.ale ?? 0;
+  const totalWood = stocks.totalOnMap?.wood ?? stocks.wood ?? 0;
   const pop = fortressSummary?.population || 7;
   const surfaceZ = fortressSummary?.surfaceZ ?? 14;
   const undergroundZ = Math.max(0, surfaceZ - 1);
@@ -64,10 +154,10 @@ function generateHeuristicDfAiPlan(body: any) {
   let statusSummary = "STABLE";
 
   // 1. Food & Drink Priority (df-ai rule: if drink < pop * 3, emergency brew & build Still)
-  if (stocks.ale < pop * 3 || !hasStill) {
+  if (totalAle < pop * 3 || !hasStill) {
     statusSummary = "BOOZE_EMERGENCY";
-    thoughtEn = `Booze reserves are low (${stocks.ale} barrels for ${pop} dwarves). Prioritizing Still workshop and brewing rations.`;
-    thoughtUa = `Запаси елю критично низькі (${stocks.ale} бочок на ${pop} гномів). Терміново зводимо Дистилятор (Still) та запускаємо пивоваріння!`;
+    thoughtEn = `Booze reserves: ${totalAle} barrels total on map (${inStockpileAle} in stockpiles) for ${pop} dwarves. Prioritizing Still workshop and brewing rations.`;
+    thoughtUa = `Запаси елю: ${totalAle} бочок на карті (${inStockpileAle} на складах) на ${pop} гномів. Зводимо Дистилятор (Still) та поповнюємо раціон!`;
 
     if (!hasStill) {
       build.push({ x: 28, y: 16, z: undergroundZ, type: "build_workshop_still" });
@@ -75,7 +165,7 @@ function generateHeuristicDfAiPlan(body: any) {
     orders.push({ action: "brew_drink", details: "Brew 10 barrels of dwarven ale" });
 
     // Ensure wood for barrels
-    if (fortressSummary?.nearbyTrees?.length > 0 && stocks.wood < 15) {
+    if (fortressSummary?.nearbyTrees?.length > 0 && totalWood < 15) {
       fortressSummary.nearbyTrees.slice(0, 4).forEach((t: any) => {
         chop.push({ x: t.x, y: t.y, z: t.z });
       });
@@ -184,7 +274,7 @@ Given the current fortress state, formulate an immediate, actionable step plan. 
 - Population: ${fortressSummary?.population || 7} dwarves (${fortressSummary?.idleDwarvesCount || 0} idle)
 - Wealth: ${fortressSummary?.wealth || 0}
 - Surface Z-level: ${fortressSummary?.surfaceZ || 14}
-- Stocks: Food: ${fortressSummary?.stocks?.food || 0}, Ale: ${fortressSummary?.stocks?.ale || 0}, Wood: ${fortressSummary?.stocks?.wood || 0}, Stone: ${fortressSummary?.stocks?.stone || 0}, Ore: ${fortressSummary?.stocks?.ore || 0}
+- Stocks: Food: ${fortressSummary?.stocks?.totalOnMap?.food ?? fortressSummary?.stocks?.food ?? 0} (Stockpile: ${fortressSummary?.stocks?.inStockpile?.food ?? 0}), Ale: ${fortressSummary?.stocks?.totalOnMap?.ale ?? fortressSummary?.stocks?.ale ?? 0} (Stockpile: ${fortressSummary?.stocks?.inStockpile?.ale ?? 0}), Wood: ${fortressSummary?.stocks?.totalOnMap?.wood ?? fortressSummary?.stocks?.wood ?? 0}, Stone: ${fortressSummary?.stocks?.totalOnMap?.stone ?? fortressSummary?.stocks?.stone ?? 0}, Ore: ${fortressSummary?.stocks?.totalOnMap?.ore ?? fortressSummary?.stocks?.ore ?? 0}
 - Existing Workshops: ${JSON.stringify(fortressSummary?.existingWorkshops || [])}
 - Existing Beds: ${fortressSummary?.existingBeds?.length || 0}
 - Unmined Visible Ore Veins: ${JSON.stringify(fortressSummary?.unminedOres?.slice(0, 6) || [])}

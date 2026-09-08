@@ -29,12 +29,14 @@ interface FortressHeaderProps {
   speed: number;
   renderMode: 'ascii' | 'graphic';
   activeTab: 'simulation' | 'raw_explorer' | 'analysis' | 'pixel_codex';
+  revealAll?: boolean;
   lang: 'en' | 'ua';
   onTogglePlay: () => void;
   onStepTick: () => void;
   onChangeSpeed: (speed: number) => void;
   onChangeZ: (delta: number) => void;
   onToggleRenderMode: () => void;
+  onToggleRevealAll?: () => void;
   onSwitchTab: (tab: 'simulation' | 'raw_explorer' | 'analysis' | 'pixel_codex') => void;
   onToggleLang: () => void;
   onAddDwarf: () => void;
@@ -50,11 +52,13 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
   speed,
   renderMode,
   activeTab,
+  revealAll = false,
   lang,
   onTogglePlay,
   onStepTick,
   onChangeSpeed,
   onToggleRenderMode,
+  onToggleRevealAll,
   onSwitchTab,
   onToggleLang,
   onAddDwarf,
@@ -216,6 +220,23 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
             <Eye className="w-3.5 h-3.5 text-sky-400" />
             <span>{renderMode === 'graphic' ? 'Graphic Tiles' : 'ASCII CP437'}</span>
           </button>
+
+          {/* Reveal Map (DFHack reveal toggle) */}
+          {onToggleRevealAll && (
+            <button
+              id="btn-header-toggle-reveal"
+              onClick={onToggleRevealAll}
+              className={`px-2 py-0.5 df-btn-bevel rounded transition-colors flex items-center gap-1 text-[11px] ${
+                revealAll
+                  ? 'bg-amber-600/90 text-stone-950 font-bold shadow-sm'
+                  : 'text-stone-300 hover:text-amber-300'
+              }`}
+              title={lang === 'ua' ? 'Розкрити карту (DFHack reveal)' : 'Reveal Map (DFHack reveal)'}
+            >
+              <Eye className={`w-3.5 h-3.5 ${revealAll ? 'text-stone-950' : 'text-amber-400'}`} />
+              <span>{revealAll ? (lang === 'ua' ? 'Карта: Відкрита' : 'Map: Revealed') : (lang === 'ua' ? 'Розкрити карту' : 'Reveal Map')}</span>
+            </button>
+          )}
 
           {/* Language */}
           <button

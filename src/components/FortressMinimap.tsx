@@ -18,6 +18,7 @@ interface FortressMinimapProps {
   onChangeZ: (delta: number) => void;
   onJumpToZ: (z: number) => void;
   onPanToWorld: (worldX: number, worldY: number) => void;
+  revealAll?: boolean;
   lang: 'en' | 'ua';
 }
 
@@ -35,6 +36,7 @@ export const FortressMinimap: React.FC<FortressMinimapProps> = ({
   onChangeZ,
   onJumpToZ,
   onPanToWorld,
+  revealAll = false,
   lang
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -54,7 +56,7 @@ export const FortressMinimap: React.FC<FortressMinimapProps> = ({
     ctx.fillStyle = '#100f0e';
     ctx.fillRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT);
 
-    // Draw tiles with multi-Z continuous terrain
+    // Draw tiles with multi-Z continuous terrain and Fog of War
     for (let y = 0; y < sizeY; y++) {
       for (let x = 0; x < sizeX; x++) {
         let activeTile = tiles[currentZ]?.[y]?.[x];
@@ -73,6 +75,21 @@ export const FortressMinimap: React.FC<FortressMinimapProps> = ({
         }
 
         if (!activeTile) continue;
+
+        // Check FoW reveal status
+        const isRevealed = revealAll || Boolean(activeTile.isRevealed);
+        if (!isRevealed) {
+          const tz = activeTile.z;
+          const isAdj = Boolean(
+            tiles[tz]?.[y - 1]?.[x]?.isRevealed ||
+            tiles[tz]?.[y + 1]?.[x]?.isRevealed ||
+            tiles[tz]?.[y]?.[x - 1]?.isRevealed ||
+            tiles[tz]?.[y]?.[x + 1]?.isRevealed
+          );
+          ctx.fillStyle = isAdj ? '#1c1a17' : '#080706';
+          ctx.fillRect(x * scaleX, y * scaleY, Math.ceil(scaleX), Math.ceil(scaleY));
+          continue;
+        }
 
         let color = '#262320';
         if (activeTile.material === 'air') {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, X, Play, Pause, RefreshCw, Send, CheckCircle2, Shield, Cpu, Flame } from 'lucide-react';
+import { Terminal, X, Play, Pause, RefreshCw, Send, CheckCircle2, Shield, Cpu, Flame, Eye } from 'lucide-react';
 import { DfAiState, DfAiLogEntry } from '../engine/dfAiClient';
 
 interface DfHackConsoleModalProps {
@@ -9,6 +9,8 @@ interface DfHackConsoleModalProps {
   onToggleActive: () => void;
   onRunStep: () => void;
   onSendCommand: (cmd: string) => void;
+  revealAll: boolean;
+  onToggleRevealAll: () => void;
   lang: 'ua' | 'en';
 }
 
@@ -19,6 +21,8 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
   onToggleActive,
   onRunStep,
   onSendCommand,
+  revealAll,
+  onToggleRevealAll,
   lang,
 }) => {
   const [inputVal, setInputVal] = useState('');
@@ -43,6 +47,7 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
     { label: 'df-ai status', cmd: 'df-ai status' },
     { label: 'df-ai step', cmd: 'df-ai step' },
     { label: aiState.isActive ? 'disable df-ai' : 'enable df-ai', cmd: aiState.isActive ? 'disable df-ai' : 'enable df-ai' },
+    { label: revealAll ? 'unreveal' : 'reveal map', cmd: revealAll ? 'unreveal' : 'reveal' },
     { label: 'order brew', cmd: 'order brew' },
     { label: 'plan bedrooms', cmd: 'plan bedrooms' },
     { label: 'dig vein', cmd: 'dig vein' },
@@ -98,6 +103,20 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              id="btn-dfhack-toggle-reveal"
+              onClick={onToggleRevealAll}
+              className={`px-3 py-1 rounded font-bold flex items-center gap-1.5 transition-colors ${
+                revealAll
+                  ? 'bg-amber-600 hover:bg-amber-500 text-stone-950 border border-amber-300 shadow-sm'
+                  : 'bg-stone-900 hover:bg-stone-800 text-amber-300 border border-amber-700/80'
+              }`}
+              title={lang === 'ua' ? 'Перемикач розкриття карти (DFHack reveal)' : 'Toggle reveal map (DFHack reveal)'}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>{revealAll ? (lang === 'ua' ? 'Карта: ВІДКРИТА' : 'Map: REVEALED') : (lang === 'ua' ? 'Відкрити карту' : 'Reveal map')}</span>
+            </button>
+
             <button
               onClick={onToggleActive}
               className={`px-3 py-1 rounded font-bold flex items-center gap-1.5 transition-colors ${

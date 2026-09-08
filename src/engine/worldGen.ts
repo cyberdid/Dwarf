@@ -14,6 +14,7 @@
 
 import { PerlinNoise3D } from './noise';
 import { Tile, MaterialType, FortressState, DwarfEntity, WorldItem, CreatureEntity, OverworldBiomeType } from '../types/simulation';
+import { buildTaskIndex } from './taskIndex';
 
 export interface WorldGenConfig {
   sizeX: number;
@@ -85,7 +86,7 @@ export function generateWorld(config: WorldGenConfig): FortressState {
           maxHardness: 0,
           waterLevel: 0,
           stability: 1.0,
-          isRevealed: z >= surfaceBaseZ - 1, // Surface visible initially
+          isRevealed: false,
           designation: 'none',
           stockpile: 'none',
           zone: 'none',
@@ -156,6 +157,9 @@ export function generateWorld(config: WorldGenConfig): FortressState {
 
       for (let z = 0; z < depthZ; z++) {
         const tile = tiles[z][y][x];
+
+        // Fog of War: Reveal surface of column, one level below, and sky above
+        tile.isRevealed = z >= surfaceZ - 1;
 
         // --- A. VOLCANO CENTRAL MAGMA PIPE ---
         if (isVolcanoVent && z <= surfaceZ) {
@@ -434,6 +438,33 @@ export function generateWorld(config: WorldGenConfig): FortressState {
     });
   }
 
+  // Initial FoW exploration: reveal tiles in radius 4 around initial dwarves
+  const EMBARK_VISION_RADIUS = 4;
+  for (const dwarf of dwarves) {
+    const minZ = Math.max(0, dwarf.z - 2);
+    const maxZ = Math.min(depthZ - 1, dwarf.z + 2);
+    const minY = Math.max(0, dwarf.y - EMBARK_VISION_RADIUS);
+    const maxY = Math.min(sizeY - 1, dwarf.y + EMBARK_VISION_RADIUS);
+    const minX = Math.max(0, dwarf.x - EMBARK_VISION_RADIUS);
+    const maxX = Math.min(sizeX - 1, dwarf.x + EMBARK_VISION_RADIUS);
+
+    for (let z = minZ; z <= maxZ; z++) {
+      const dz = z - dwarf.z;
+      for (let y = minY; y <= maxY; y++) {
+        const dy = y - dwarf.y;
+        for (let x = minX; x <= maxX; x++) {
+          const dx = x - dwarf.x;
+          if (dx * dx + dy * dy + dz * dz <= EMBARK_VISION_RADIUS * EMBARK_VISION_RADIUS) {
+            const t = tiles[z]?.[y]?.[x];
+            if (t && !t.isRevealed) {
+              t.isRevealed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // 7. Initial Embark Stockpile Items
   const items: WorldItem[] = [
     { id: 'item_food_1', type: 'food', nameEn: 'Plump Helmet barrel', nameUa: 'Бочка товстошоломників', x: embarkX + 1, y: embarkY, z: embarkZ },
@@ -488,12 +519,29 @@ export function generateWorld(config: WorldGenConfig): FortressState {
     dwarves,
     creatures,
     items,
+    taskIndex: buildTaskIndex(tiles),
     stockpilesCounts: {
       stone: 1,
       wood: 2,
       food: 2,
       ore: 0,
       ale: 2
+    },
+    stocksBreakdown: {
+      totalOnMap: {
+        stone: 1,
+        wood: 2,
+        food: 2,
+        ore: 0,
+        ale: 2
+      },
+      inStockpile: {
+        stone: 0,
+        wood: 0,
+        food: 0,
+        ore: 0,
+        ale: 0
+      }
     },
     wealth: 1500,
     year: 105,
