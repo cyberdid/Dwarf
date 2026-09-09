@@ -13,11 +13,31 @@ import {
   drawSteamItem,
   drawSteamCreature
 } from '../engine/tileGraphics';
+import { particleManager } from '../engine/particleSystem';
+import { lightingEngine, LightSource } from '../engine/lightingEngine';
+import { WebGLPostProcessor } from '../engine/webglPostProcessing';
+import {
+  worldToIso,
+  isoToWorld,
+  isIsoSolid,
+  drawIsoBlock,
+  drawIsoFloor,
+  drawIsoProp,
+  drawIsoDwarf,
+  drawIsoDesignation,
+  drawIsoStockpile,
+  renderPilgrimageWorld,
+  PilgrimageVisualSettings,
+  DEFAULT_PILGRIMAGE_SETTINGS,
+  ISO_TILE_W,
+  ISO_TILE_H,
+  BLOCK_H
+} from '../engine/isometricRenderer';
 
 interface FortressCanvasProps {
   state: FortressState;
   currentZ: number;
-  renderMode: 'ascii' | 'graphic';
+  renderMode: 'ascii' | 'graphic' | 'isometric';
   selectedTool: DesignationType | 'inspect' | 'stockpile_stone' | 'stockpile_wood' | 'stockpile_food' | 'stockpile_ore' | 'cancel' | string;
   selectedDwarfId: string | null;
   pan: { x: number; y: number };
@@ -50,24 +70,51 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
   lang
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const glCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const postProcessorRef = useRef<WebGLPostProcessor | null>(null);
 
+  const [useShaders, setUseShaders] = useState<boolean>(true);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [hoveredTile, setHoveredTile] = useState<{ x: number; y: number; z: number } | null>(null);
   const [isDesignating, setIsDesignating] = useState<boolean>(false);
+  const [pilgrimageSettings, setPilgrimageSettings] = useState<PilgrimageVisualSettings>(DEFAULT_PILGRIMAGE_SETTINGS);
+
+  // Initialize WebGL2 Post-Processor
+  useEffect(() => {
+    if (!glCanvasRef.current) return;
+    const processor = new WebGLPostProcessor();
+    const ok = processor.init(glCanvasRef.current);
+    if (ok) {
+      postProcessorRef.current = processor;
+    }
+
+    return () => {
+      processor.destroy();
+      postProcessorRef.current = null;
+    };
+  }, []);
 
   // Resize observer to ensure full container pixel sharpness
   useEffect(() => {
     const handleResize = () => {
-      if (containerRef.current && canvasRef.current) {
+      if (containerRef.current) {
         const width = containerRef.current.clientWidth;
         const height = containerRef.current.clientHeight;
         const dpr = window.devicePixelRatio || 1;
-        canvasRef.current.width = width * dpr;
-        canvasRef.current.height = height * dpr;
-        canvasRef.current.style.width = `${width}px`;
-        canvasRef.current.style.height = `${height}px`;
+        if (canvasRef.current) {
+          canvasRef.current.width = width * dpr;
+          canvasRef.current.height = height * dpr;
+          canvasRef.current.style.width = `${width}px`;
+          canvasRef.current.style.height = `${height}px`;
+        }
+        if (glCanvasRef.current) {
+          glCanvasRef.current.width = width * dpr;
+          glCanvasRef.current.height = height * dpr;
+          glCanvasRef.current.style.width = `${width}px`;
+          glCanvasRef.current.style.height = `${height}px`;
+        }
       }
     };
 
@@ -89,16 +136,17 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
     if (width <= 0 || height <= 0) return;
 
     const padding = 28;
-    const worldW = state.sizeX * TILE_SIZE;
-    const worldH = state.sizeY * TILE_SIZE;
-    const fitZoom = Math.max(0.4, Math.min((width - padding * 2) / worldW, (height - padding * 2) / worldH, 1.8));
+    const isIso = renderMode === 'isometric';
+    const worldW = isIso ? (state.sizeX + state.sizeY) * (ISO_TILE_W / 2) : state.sizeX * TILE_SIZE;
+    const worldH = isIso ? (state.sizeX + state.sizeY) * (ISO_TILE_H / 2) + 120 : state.sizeY * TILE_SIZE;
+    const fitZoom = Math.max(0.35, Math.min((width - padding * 2) / worldW, (height - padding * 2) / worldH, 1.8));
     const roundedZoom = Number(fitZoom.toFixed(2));
     const panX = Math.round((width - worldW * roundedZoom) / 2);
-    const panY = Math.round((height - worldH * roundedZoom) / 2);
+    const panY = isIso ? Math.round((height - worldH * roundedZoom) / 4) : Math.round((height - worldH * roundedZoom) / 2);
 
     onZoomChange(roundedZoom);
     onPanChange({ x: panX, y: panY });
-  }, [state.sizeX, state.sizeY, onZoomChange, onPanChange]);
+  }, [state.sizeX, state.sizeY, renderMode, onZoomChange, onPanChange]);
 
   // Initial auto-fit so the entire embark map fits into one frame at startup
   const initialFitDone = useRef(false);
@@ -199,6 +247,47 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
       );
     };
 
+    // ----------------------------------------------------
+    // VARIANT C: STONESENSE 3D ISOMETRIC PROJECTION PASS
+    // ----------------------------------------------------
+    if (renderMode === 'isometric') {
+      renderPilgrimageWorld(ctx, {
+        state,
+        currentZ,
+        pan,
+        zoom,
+        canvasWidth: canvas.width / dpr,
+        canvasHeight: canvas.height / dpr,
+        selectedDwarfId,
+        hoveredTile,
+        aiHighlights,
+        revealAll,
+        settings: pilgrimageSettings,
+        tick
+      });
+
+      ctx.restore(); // End world transform
+
+      // Woodcut Vignette
+      ctx.save();
+      const vw = canvas.width / dpr;
+      const vh = canvas.height / dpr;
+      const vignetteGrad = ctx.createRadialGradient(
+        vw / 2,
+        vh / 2,
+        Math.min(vw, vh) * 0.42,
+        vw / 2,
+        vh / 2,
+        Math.max(vw, vh) * 0.78
+      );
+      vignetteGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignetteGrad.addColorStop(1, 'rgba(10, 8, 5, 0.65)');
+      ctx.fillStyle = vignetteGrad;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.restore();
+      return;
+    }
+
     // 1. Multi-Z Continuous World Rendering with Authentic DF Fog of War
     // Displays the current Z-level and gazes down through open air columns to render lower terrain terraces and valleys seamlessly
     for (let y = minVisibleY; y <= maxVisibleY; y++) {
@@ -227,13 +316,19 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
               drawAsciiTile(ctx, currentTile, posX, posY);
             }
 
-            // Stockpile boundary border
+            // Stockpile indicator (Soft circular ground aura - ZERO SQUARES!)
             if (currentTile.stockpile !== 'none') {
+              const scx = posX + TILE_SIZE / 2;
+              const scy = posY + TILE_SIZE / 2;
+              ctx.save();
+              ctx.fillStyle = getStockpileBorderColor(currentTile.stockpile) + '22';
+              ctx.beginPath();
+              ctx.arc(scx, scy, TILE_SIZE * 0.42, 0, Math.PI * 2);
+              ctx.fill();
               ctx.strokeStyle = getStockpileBorderColor(currentTile.stockpile);
-              ctx.lineWidth = 1.5;
-              ctx.setLineDash([4, 2]);
-              ctx.strokeRect(posX + 1.5, posY + 1.5, TILE_SIZE - 3, TILE_SIZE - 3);
-              ctx.setLineDash([]);
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+              ctx.restore();
             }
 
             // Designation overlay (Mining, Chopping, Building)
@@ -241,16 +336,22 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
               drawDesignationOverlay(ctx, currentTile.designation, posX, posY);
             }
 
-            // DF-AI autonomous planned indicator
+            // DF-AI autonomous planned indicator (Soft blue circular beacon)
             const isAiPlanned = aiHighlights.some(h => h.x === x && h.y === y && h.z === currentZ);
             if (isAiPlanned) {
+              const acx = posX + TILE_SIZE / 2;
+              const acy = posY + TILE_SIZE / 2;
               ctx.save();
               ctx.strokeStyle = '#38bdf8';
-              ctx.lineWidth = 1;
-              ctx.strokeRect(posX + 2, posY + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+              ctx.lineWidth = 1.2;
+              ctx.beginPath();
+              ctx.arc(acx, acy, TILE_SIZE * 0.4, 0, Math.PI * 2);
+              ctx.stroke();
               ctx.fillStyle = '#0284c7';
               ctx.font = '8px monospace';
-              ctx.fillText('AI', posX + 3, posY + 9);
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('AI', acx, acy);
               ctx.restore();
             }
           } else {
@@ -438,6 +539,9 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
       }
     }
 
+    // 4b. Particle VFX Render (rock dust, forging sparks, woodchips)
+    particleManager.render(ctx, currentZ);
+
     // 5. Dwarven Embark Perimeter Frame
     const worldW = sizeX * TILE_SIZE;
     const worldH = sizeY * TILE_SIZE;
@@ -453,65 +557,168 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
     ctx.fillText('╝', worldW - 9, worldH - 3);
     ctx.restore();
 
-    // 6. Subterranean Lantern Glow & Atmospheric Lighting (Graphic Mode)
+    // 6. Dynamic 2D Raycast Volumetric Lighting & Shadows (Graphic Mode)
     if (renderMode === 'graphic') {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
+      const lights: LightSource[] = [];
 
-      // Lantern light around working/moving dwarves
+      // A. Dwarves carrying torches/lanterns
       for (const dwarf of dwarves) {
-        if (dwarf.z === currentZ) {
-          const dx = dwarf.x * TILE_SIZE + TILE_SIZE / 2;
-          const dy = dwarf.y * TILE_SIZE + TILE_SIZE / 2;
-          const flicker = Math.sin(tick * 0.25 + dwarf.x * 2) * 3;
-          const rad = 46 + flicker;
-          const grad = ctx.createRadialGradient(dx, dy, 2, dx, dy, rad);
-          grad.addColorStop(0, 'rgba(251, 191, 36, 0.22)'); // warm amber halo
-          grad.addColorStop(0.6, 'rgba(245, 158, 11, 0.08)');
-          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(dx, dy, rad, 0, Math.PI * 2);
-          ctx.fill();
+        if (dwarf.z === currentZ || (dwarf.z < currentZ && tiles[currentZ]?.[dwarf.y]?.[dwarf.x]?.material === 'air')) {
+          lights.push({
+            x: dwarf.x * TILE_SIZE + TILE_SIZE / 2,
+            y: dwarf.y * TILE_SIZE + TILE_SIZE / 2,
+            radius: 140,
+            color: 'rgba(251, 191, 36, 0.95)',
+            intensity: 0.92,
+            flickerSpeed: 0.22,
+            flickerAmount: 0.08
+          });
         }
       }
 
+      // B. Magma pools & burning workshop fires
+      const currentZTiles = tiles[currentZ];
+      if (currentZTiles) {
+        for (let y = minVisibleY; y <= maxVisibleY; y += 2) {
+          for (let x = minVisibleX; x <= maxVisibleX; x += 2) {
+            const t = currentZTiles[y]?.[x];
+            if (!t) continue;
+            if (t.material === 'magma') {
+              lights.push({
+                x: x * TILE_SIZE + TILE_SIZE / 2,
+                y: y * TILE_SIZE + TILE_SIZE / 2,
+                radius: 105,
+                color: 'rgba(234, 88, 12, 0.92)',
+                intensity: 0.88,
+                flickerSpeed: 0.12,
+                flickerAmount: 0.06
+              });
+            } else if (
+              t.material.startsWith('workshop_furnace') ||
+              t.material.startsWith('workshop_smelter') ||
+              t.material.startsWith('workshop_kitchen')
+            ) {
+              lights.push({
+                x: x * TILE_SIZE + TILE_SIZE / 2,
+                y: y * TILE_SIZE + TILE_SIZE / 2,
+                radius: 120,
+                color: 'rgba(245, 158, 11, 0.90)',
+                intensity: 0.90,
+                flickerSpeed: 0.28,
+                flickerAmount: 0.10
+              });
+            }
+          }
+        }
+      }
+
+      const isSurfaceLevel = currentZ >= 38;
+
+      ctx.restore(); // Restore world transform to screen coordinates for lighting buffer
+      lightingEngine.renderLighting(
+        ctx,
+        canvas.width / dpr,
+        canvas.height / dpr,
+        pan,
+        zoom,
+        currentZ,
+        tiles,
+        sizeX,
+        sizeY,
+        lights,
+        tick,
+        isSurfaceLevel
+      );
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.translate(pan.x, pan.y);
+      ctx.scale(zoom, zoom);
+    }
+
+    // 7. Hover Highlight Reticle (Soft Golden Circular Rune - ZERO SQUARES!)
+    if (hoveredTile && hoveredTile.z === currentZ) {
+      const hcx = hoveredTile.x * TILE_SIZE + TILE_SIZE / 2;
+      const hcy = hoveredTile.y * TILE_SIZE + TILE_SIZE / 2;
+
+      ctx.save();
+      const pulse = (Math.sin(tick * 0.25) + 1) * 0.5;
+      ctx.strokeStyle = `rgba(251, 191, 36, ${0.75 + pulse * 0.25})`;
+      ctx.lineWidth = 1.8;
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(hcx, hcy, TILE_SIZE * 0.48, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = `rgba(254, 240, 138, ${0.12 + pulse * 0.08})`;
+      ctx.fill();
       ctx.restore();
     }
 
-    // 7. Hover Highlight Reticle (Authentic DF Steam style corner brackets)
-    if (hoveredTile && hoveredTile.z === currentZ) {
-      const hx = hoveredTile.x * TILE_SIZE;
-      const hy = hoveredTile.y * TILE_SIZE;
+    ctx.restore(); // End world transform
 
-      ctx.strokeStyle = '#fbbf24';
-      ctx.lineWidth = 1.5;
-      const bLen = 6;
-      ctx.beginPath();
-      // Top-left corner
-      ctx.moveTo(hx, hy + bLen); ctx.lineTo(hx, hy); ctx.lineTo(hx + bLen, hy);
-      // Top-right corner
-      ctx.moveTo(hx + TILE_SIZE, hy + bLen); ctx.lineTo(hx + TILE_SIZE, hy); ctx.lineTo(hx + TILE_SIZE - bLen, hy);
-      // Bottom-left corner
-      ctx.moveTo(hx, hy + TILE_SIZE - bLen); ctx.lineTo(hx, hy + TILE_SIZE); ctx.lineTo(hx + bLen, hy + TILE_SIZE);
-      // Bottom-right corner
-      ctx.moveTo(hx + TILE_SIZE, hy + TILE_SIZE - bLen); ctx.lineTo(hx + TILE_SIZE, hy + TILE_SIZE); ctx.lineTo(hx + TILE_SIZE - bLen, hy + TILE_SIZE);
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.12)';
-      ctx.fillRect(hx, hy, TILE_SIZE, TILE_SIZE);
-    }
-
+    // 8. Medieval Woodcut Vignette (Atmospheric edge shading in screen space)
+    ctx.save();
+    const vw = canvas.width / dpr;
+    const vh = canvas.height / dpr;
+    const vignetteGrad = ctx.createRadialGradient(
+      vw / 2,
+      vh / 2,
+      Math.min(vw, vh) * 0.42,
+      vw / 2,
+      vh / 2,
+      Math.max(vw, vh) * 0.78
+    );
+    vignetteGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignetteGrad.addColorStop(1, 'rgba(10, 8, 5, 0.65)');
+    ctx.fillStyle = vignetteGrad;
+    ctx.fillRect(0, 0, vw, vh);
     ctx.restore();
   }, [state, currentZ, renderMode, zoom, pan, hoveredTile, selectedDwarfId]);
 
+  // 60 FPS continuous animation loop for fluid particles, torchlight flickering & WebGL Post-processing
   useEffect(() => {
-    render();
-  }, [render]);
+    let animId: number;
+    let lastTime = performance.now();
+
+    const loop = (time: number) => {
+      if (time - lastTime >= 16) {
+        particleManager.update();
+        render();
+
+        // WebGL2 Post-processing pass (Multi-pass Bloom, Heat Haze & Tonemapping)
+        if (
+          useShaders &&
+          postProcessorRef.current &&
+          postProcessorRef.current.isSupported &&
+          canvasRef.current &&
+          glCanvasRef.current
+        ) {
+          const currentZTiles = state.tiles[currentZ];
+          const hasMagma = currentZTiles?.some(row =>
+            row.some(t => t.material === 'magma' || t.material.startsWith('workshop_furnace') || t.material.startsWith('workshop_smelter'))
+          );
+          postProcessorRef.current.render(canvasRef.current, {
+            time: time * 0.001,
+            bloomIntensity: 1.35,
+            heatDistortion: hasMagma ? 1.0 : 0.0,
+            grainIntensity: 0.45,
+            hasMagma: Boolean(hasMagma),
+          });
+        }
+
+        lastTime = time;
+      }
+      animId = requestAnimationFrame(loop);
+    };
+
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, [render, useShaders, currentZ, state.tiles]);
 
   // Coordinate Conversion Helper
   const getTileCoordsFromEvent = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
+    const canvas = (useShaders && glCanvasRef.current) ? glCanvasRef.current : canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -519,6 +726,23 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
 
     const worldX = (clickX - pan.x) / zoom;
     const worldY = (clickY - pan.y) / zoom;
+
+    if (renderMode === 'isometric') {
+      const isoOffsetX = (state.sizeY * ISO_TILE_W) / 2 + 40;
+      const isoOffsetY = 80;
+      const isoCoords = isoToWorld(
+        worldX - isoOffsetX,
+        worldY - isoOffsetY,
+        currentZ,
+        pilgrimageSettings.rotation,
+        state.sizeX,
+        state.sizeY
+      );
+      if (isoCoords.x >= 0 && isoCoords.x < state.sizeX && isoCoords.y >= 0 && isoCoords.y < state.sizeY) {
+        return { x: isoCoords.x, y: isoCoords.y, z: currentZ };
+      }
+      return null;
+    }
 
     const tileX = Math.floor(worldX / TILE_SIZE);
     const tileY = Math.floor(worldY / TILE_SIZE);
@@ -591,9 +815,25 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
       className="relative w-full h-full overflow-hidden bg-[#0a0908] select-none cursor-crosshair"
       onContextMenu={e => e.preventDefault()}
     >
+      {/* Primary 2D Canvas (Scene Render & Raycasting) */}
       <canvas
         ref={canvasRef}
-        className="w-full h-full block"
+        className={`w-full h-full ${useShaders ? 'hidden' : 'block'}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={() => {
+          setIsDragging(false);
+          setIsDesignating(false);
+          setHoveredTile(null);
+        }}
+        onWheel={handleWheel}
+      />
+
+      {/* Hardware-Accelerated WebGL2 Canvas (Multi-pass Bloom, Heat Mirage & Grain) */}
+      <canvas
+        ref={glCanvasRef}
+        className={`w-full h-full ${useShaders ? 'block' : 'hidden'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -607,16 +847,16 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
 
       {/* Floating HUD: Tile Inspector & Cursor Info (Top-Left) */}
       {hoveredTile && (
-        <div className="absolute top-3 left-3 pointer-events-none df-gold-frame rounded-md px-3 py-1.5 shadow-2xl backdrop-blur-sm text-xs font-mono text-stone-200 flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-stone-400 font-cinzel">
+        <div className="absolute top-3 left-3 pointer-events-none pilgrimage-panel pilgrimage-frame rounded-md px-3 py-1.5 shadow-2xl backdrop-blur-sm text-xs text-[#f2e8d5] flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-[#c7b897] font-cinzel text-[11px]">
             <span>X:{hoveredTile.x}</span>
             <span>Y:{hoveredTile.y}</span>
-            <span className="text-amber-300 font-bold">Z:{hoveredTile.z}</span>
+            <span className="text-[#f5d576] font-bold">Z:{hoveredTile.z}</span>
           </div>
-          <div className="h-3 w-px bg-[#5a4522]" />
+          <div className="h-3 w-px bg-[#726242]" />
           <div>
-            <span className="text-stone-400 font-cinzel text-[11px]">{lang === 'ua' ? 'Блок: ' : 'Tile: '}</span>
-            <span className="text-amber-300 font-bold uppercase tracking-wider">
+            <span className="text-[#c7b897] font-cinzel text-[11px]">{lang === 'ua' ? 'Блок: ' : 'Tile: '}</span>
+            <span className="text-[#f5d576] font-bold font-garamond text-sm uppercase tracking-wider">
               {(() => {
                 const targetTile = state.tiles[hoveredTile.z]?.[hoveredTile.y]?.[hoveredTile.x];
                 if (!revealAll && targetTile && !targetTile.isRevealed) {
@@ -631,8 +871,8 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
             if ((revealAll || targetTile?.isRevealed) && targetTile?.designation !== 'none') {
               return (
                 <>
-                  <div className="h-3 w-px bg-[#5a4522]" />
-                  <div className="text-rose-400 font-bold">
+                  <div className="h-3 w-px bg-[#726242]" />
+                  <div className="text-rose-400 font-bold font-cinzel text-xs">
                     ★ {targetTile?.designation}
                   </div>
                 </>
@@ -644,25 +884,25 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
       )}
 
       {/* Floating Canvas Controls (Bottom-Left) */}
-      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 df-gold-frame rounded-md p-1 shadow-2xl backdrop-blur-sm text-xs font-mono text-stone-300 z-20">
+      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 pilgrimage-panel pilgrimage-frame rounded-md p-1 shadow-2xl backdrop-blur-sm text-xs text-[#f2e8d5] z-20">
         <button
           onClick={() => onZoomChange(Math.min(3.0, zoom + 0.2))}
-          className="px-2 py-1 df-btn-bevel rounded text-stone-200 hover:text-amber-300 transition-colors"
+          className="px-2 py-1 pilgrimage-action rounded text-[#f2e8d5] hover:text-[#fef0c7] transition-colors"
           title="Zoom In"
         >
           +
         </button>
-        <span className="w-10 text-center font-mono text-[11px] text-amber-300">{Math.round(zoom * 100)}%</span>
+        <span className="w-10 text-center font-mono text-[11px] text-[#f5d576]">{Math.round(zoom * 100)}%</span>
         <button
           onClick={() => onZoomChange(Math.max(0.6, zoom - 0.2))}
-          className="px-2 py-1 df-btn-bevel rounded text-stone-200 hover:text-amber-300 transition-colors"
+          className="px-2 py-1 pilgrimage-action rounded text-[#f2e8d5] hover:text-[#fef0c7] transition-colors"
           title="Zoom Out"
         >
           -
         </button>
         <button
           onClick={handleFitWorld}
-          className="px-2.5 py-1 df-btn-bevel rounded font-cinzel text-xs text-amber-200 hover:text-amber-100 transition-colors flex items-center gap-1 font-semibold"
+          className="px-2.5 py-1 pilgrimage-action rounded font-cinzel text-xs text-[#f5d576] hover:text-[#fef0c7] transition-colors flex items-center gap-1 font-semibold"
           title={lang === 'ua' ? 'Вмістити весь світ на один кадр' : 'Fit entire map into screen frame'}
         >
           <span className="text-[13px] leading-none">⊡</span>
@@ -673,12 +913,105 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
             onZoomChange(1.2);
             onPanChange({ x: 30, y: 30 });
           }}
-          className="px-2 py-1 df-btn-bevel rounded font-cinzel text-xs text-stone-300 hover:text-amber-200 transition-colors"
+          className="px-2 py-1 pilgrimage-action rounded font-cinzel text-xs text-[#c7b897] hover:text-[#fef0c7] transition-colors"
           title="Reset Camera"
         >
           {lang === 'ua' ? 'Скидання' : 'Reset'}
         </button>
+        <div className="h-4 w-px bg-[#52432a] mx-0.5" />
+        <button
+          onClick={() => setUseShaders(!useShaders)}
+          className={`px-2.5 py-1 rounded font-cinzel text-xs flex items-center gap-1 font-semibold transition-all ${
+            useShaders
+              ? 'bg-[#382613] border border-[#d4af37] text-[#fef08a] shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+              : 'pilgrimage-action text-[#a8997a]'
+          }`}
+          title={lang === 'ua' ? 'Перемкнути WebGL Bloom, розмиття тепла та шейдери' : 'Toggle WebGL Bloom, Heat Mirage & Post-processing shaders'}
+        >
+          <span className="text-[#f59e0b]">✦</span>
+          <span>{lang === 'ua' ? (useShaders ? 'WebGL Шейдери' : '2D Canvas') : (useShaders ? 'WebGL FX' : '2D Canvas')}</span>
+        </button>
       </div>
+
+      {/* Floating Pilgrimage Visual Engine Controls (Top-Right, Isometric Mode) */}
+      {renderMode === 'isometric' && (
+        <div className="absolute top-3 right-3 flex items-center gap-1.5 pilgrimage-panel pilgrimage-frame rounded-md p-1 shadow-2xl backdrop-blur-sm text-xs text-[#f2e8d5] z-20">
+          {/* 4-Way Rotation */}
+          <button
+            onClick={() => {
+              setPilgrimageSettings(prev => ({
+                ...prev,
+                rotation: ((prev.rotation + 1) % 4) as 0 | 1 | 2 | 3
+              }));
+            }}
+            className="px-2.5 py-1 pilgrimage-action rounded font-cinzel text-xs text-[#f5d576] hover:text-[#fef0c7] flex items-center gap-1 transition-colors"
+            title={lang === 'ua' ? 'Повернути камеру на 90°' : 'Rotate view 90°'}
+          >
+            <span>🔄</span>
+            <span>{pilgrimageSettings.rotation * 90}°</span>
+          </button>
+
+          <div className="h-4 w-px bg-[#52432a] mx-0.5" />
+
+          {/* Tree Sprites Toggle */}
+          <button
+            onClick={() => {
+              setPilgrimageSettings(prev => ({
+                ...prev,
+                showTrees: !prev.showTrees
+              }));
+            }}
+            className={`px-2 py-1 rounded font-cinzel text-xs transition-colors flex items-center gap-1 ${
+              pilgrimageSettings.showTrees
+                ? 'bg-[#293d18] text-[#bef264] border border-[#65a30d]'
+                : 'pilgrimage-action text-[#a8997a]'
+            }`}
+            title={lang === 'ua' ? 'Відображати дерева спрайтами Pilgrimage' : 'Toggle Pilgrimage Tree Sprites'}
+          >
+            <span>🌲</span>
+            <span>{lang === 'ua' ? 'Дерева' : 'Trees'}</span>
+          </button>
+
+          {/* Water Shimmer & Shore Foam */}
+          <button
+            onClick={() => {
+              setPilgrimageSettings(prev => ({
+                ...prev,
+                shimmerStrength: prev.shimmerStrength > 0 ? 0 : 0.35,
+                foamStrength: prev.foamStrength > 0 ? 0 : 0.45
+              }));
+            }}
+            className={`px-2 py-1 rounded font-cinzel text-xs transition-colors flex items-center gap-1 ${
+              pilgrimageSettings.shimmerStrength > 0
+                ? 'bg-[#16384c] text-[#7dd3fc] border border-[#0284c7]'
+                : 'pilgrimage-action text-[#a8997a]'
+            }`}
+            title={lang === 'ua' ? 'Анімація відблисків та морської піни на воді' : 'Toggle Water Shimmer & Foam'}
+          >
+            <span>✨</span>
+            <span>{lang === 'ua' ? 'Вода' : 'Water FX'}</span>
+          </button>
+
+          {/* Storybook Ink Edge Contour */}
+          <button
+            onClick={() => {
+              setPilgrimageSettings(prev => ({
+                ...prev,
+                edgeLine: prev.edgeLine > 0 ? 0 : 0.45
+              }));
+            }}
+            className={`px-2 py-1 rounded font-cinzel text-xs transition-colors flex items-center gap-1 ${
+              pilgrimageSettings.edgeLine > 0
+                ? 'bg-[#3b2b1b] text-[#fde047] border border-[#ca8a04]'
+                : 'pilgrimage-action text-[#a8997a]'
+            }`}
+            title={lang === 'ua' ? 'Контурні сепійні чорнильні лінії круч (edgeline)' : 'Toggle Cliff Edge Contour Lines'}
+          >
+            <span>✒️</span>
+            <span>{lang === 'ua' ? 'Контури' : 'Edgelines'}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -906,27 +1239,39 @@ function drawDesignationOverlay(
   y: number
 ) {
   let color = 'rgba(239, 68, 68, 0.45)'; // red for mine
+  let strokeColor = '#f59e0b';
   let symbol = '⛏';
 
   if (designation === 'chop') {
     color = 'rgba(34, 197, 94, 0.45)';
+    strokeColor = '#22c55e';
     symbol = '🪓';
   } else if (designation.startsWith('build_')) {
     color = 'rgba(56, 189, 248, 0.45)';
+    strokeColor = '#38bdf8';
     symbol = '🔨';
   }
 
+  const cx = x + TILE_SIZE / 2;
+  const cy = y + TILE_SIZE / 2;
+
+  // Soft circular glow (ZERO SQUARES!)
+  ctx.save();
   ctx.fillStyle = color;
-  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-  ctx.strokeStyle = '#facc15';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+  ctx.beginPath();
+  ctx.arc(cx, cy, TILE_SIZE * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
 
   ctx.fillStyle = '#ffffff';
   ctx.font = '13px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(symbol, x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+  ctx.fillText(symbol, cx, cy);
+  ctx.restore();
 }
 
 function getStockpileBorderColor(stockpile: StockpileType): string {

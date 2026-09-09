@@ -25,6 +25,43 @@ export interface DfAiLogEntry {
   terminalCommand?: string;
 }
 
+export interface GeminiActionRecord {
+  id: string;
+  cycleNumber: number;
+  tick: number;
+  calendarTime: string;
+  realTime: string;
+  model: string;
+  isFallback: boolean;
+  fallbackReason?: string;
+  statusSummary: string;
+  directive: string;
+  governanceCategory: 'survival' | 'residential' | 'economy' | 'mining' | 'expansion' | 'diplomacy';
+  thoughtProcessUa: string;
+  thoughtProcessEn: string;
+  governanceExplanation: {
+    ua: string;
+    en: string;
+  };
+  terminalCommand: string;
+  actions: {
+    miningCount: number;
+    miningCoords: { x: number; y: number; z: number }[];
+    chopCount: number;
+    chopCoords: { x: number; y: number; z: number }[];
+    buildCount: number;
+    buildItems: { type: string; x: number; y: number; z: number }[];
+    stockpilesCount: number;
+    stockpiles: { type: string; x1: number; y1: number; x2: number; y2: number; z: number }[];
+    zonesCount: number;
+    zones: { type: string; x1: number; y1: number; x2: number; y2: number; z: number }[];
+    ordersCount: number;
+    orders: { action: string; details: string }[];
+  };
+  summaryUa: string;
+  summaryEn: string;
+}
+
 export interface DfAiState {
   isActive: boolean;
   isThinking: boolean;
@@ -39,7 +76,10 @@ export interface DfAiState {
   aiModel: string;
   totalCyclesExecuted: number;
   terminalLogs: DfAiLogEntry[];
+  actionHistory: GeminiActionRecord[];
   highlightedTiles: { x: number; y: number; z: number; type: string }[];
+  isFallback?: boolean;
+  fallbackReason?: string;
 }
 
 export const INITIAL_DF_AI_STATE: DfAiState = {
@@ -50,11 +90,12 @@ export const INITIAL_DF_AI_STATE: DfAiState = {
   lastRunTick: 0,
   lastRunTime: 0,
   cycleIntervalSeconds: 6,
-  thoughtProcessEn: 'df-ai overseer initialized. Ready to autonomously strike the earth and command dwarves.',
-  thoughtProcessUa: 'Автономний наглядач df-ai готовий до роботи. Очікує команди «Увімкнути Автопілот» або «Крок AI».',
+  thoughtProcessEn: 'df-ai overseer initialized with Gemini 3.8 Flash. Ready to autonomously strike the earth and command dwarves.',
+  thoughtProcessUa: 'Автономний наглядач df-ai підключений до Gemini 3.8 Flash. Очікує команди «Увімкнути Автопілот» або «Крок AI».',
   statusSummary: 'STANDBY',
   aiModel: 'gemini-3.8-flash',
   totalCyclesExecuted: 0,
+  isFallback: false,
   terminalLogs: [
     {
       id: 'log_init_1',
@@ -68,6 +109,43 @@ export const INITIAL_DF_AI_STATE: DfAiState = {
       timestamp: '00:00',
       type: 'gemini',
       text: '[df-ai:gemini] Autonomous LLM module connected to Google Gemini 3.8 Flash',
+    },
+  ],
+  actionHistory: [
+    {
+      id: 'action_init_0',
+      cycleNumber: 0,
+      tick: 0,
+      calendarTime: 'Year 105, Spring 1 (Tick 0)',
+      realTime: '00:00',
+      model: 'gemini-3.8-flash',
+      isFallback: false,
+      statusSummary: 'FOUNDATION_SURVEY',
+      directive: 'Збалансований розвиток фортеці (Standard df-ai)',
+      governanceCategory: 'survival',
+      thoughtProcessUa: 'Первинне обстеження гірського масиву: 7 гномів прибули з початковими запасами їжі та елю. Затверджено стратегічний протокол автономного виживання.',
+      thoughtProcessEn: 'Initial mountain terrain survey: 7 dwarves embarked with rations. Approved foundational autonomous survival and architectural protocols.',
+      governanceExplanation: {
+        ua: 'Ініціалізація автономного керування: Gemini визначила пріоритет безперебійного постачання елю, безпеки спалень від тантричних зривів та розвідки рудних пластів.',
+        en: 'Autonomous initialization: Gemini established paramount rules for unbroken booze supply, bedroom allocations against tantrum spirals, and mineral prospecting.',
+      },
+      terminalCommand: '[df-ai:overseer] Initialized fortress governance matrix with Autonomous Overseer',
+      actions: {
+        miningCount: 0,
+        miningCoords: [],
+        chopCount: 0,
+        chopCoords: [],
+        buildCount: 0,
+        buildItems: [],
+        stockpilesCount: 0,
+        stockpiles: [],
+        zonesCount: 0,
+        zones: [],
+        ordersCount: 0,
+        orders: [],
+      },
+      summaryUa: 'Встановлено контроль наглядача DF-AI: затверджено протокол виживання та розбудови фортеці.',
+      summaryEn: 'DF-AI overseer control established: foundational survival and expansion protocol approved.',
     },
   ],
   highlightedTiles: [],
@@ -426,15 +504,132 @@ export async function executeDfAiStep(
   const timeStr = `${String(Math.floor(fortress.tick / 60)).padStart(2, '0')}:${String(fortress.tick % 60).padStart(2, '0')}`;
   const terminalLine = responseData.dfHackTerminalLine || `[df-ai:plan] Cycle executed: status=${responseData.statusSummary}`;
 
+  const isFallback = Boolean(
+    responseData.isFallback ||
+    responseData.source?.includes('fallback') ||
+    responseData.source?.includes('heuristic')
+  );
+  const fallbackReason =
+    responseData.fallbackReason ||
+    responseData.error ||
+    (isFallback ? 'Autonomous heuristic rules applied' : undefined);
+
   const newLog: DfAiLogEntry = {
     id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     timestamp: timeStr,
-    type: responseData.source?.includes('gemini') ? 'gemini' : 'plan',
+    type: isFallback ? 'warning' : (responseData.source?.includes('gemini') ? 'gemini' : 'plan'),
     text: terminalLine,
     terminalCommand: `df-ai plan --status=${responseData.statusSummary}`,
   };
 
   const updatedTerminalLogs = [...aiState.terminalLogs.slice(-40), newLog];
+
+  // Build comprehensive Gemini Action & Governance Record
+  const miningCoords = Array.isArray(commands?.mine) ? commands.mine : [];
+  const chopCoords = Array.isArray(commands?.chop) ? commands.chop : [];
+  const buildItems = Array.isArray(commands?.build) ? commands.build : [];
+  const stockpilesList = Array.isArray(commands?.stockpiles) ? commands.stockpiles : [];
+  const zonesList = Array.isArray(commands?.zones) ? commands.zones : [];
+  const ordersList = Array.isArray(commands?.orders) ? commands.orders : [];
+
+  let governanceCategory: GeminiActionRecord['governanceCategory'] = 'expansion';
+  let govExplanationUa = 'Стратегічний розвиток: Gemini здійснює планове розширення центральних коридорів, організацію складських зон і підготовку до оборони.';
+  let govExplanationEn = 'Strategic development: Gemini is executing planned central gallery excavation, stockpile allocation, and defensive fortifying.';
+
+  const st = (responseData.statusSummary || '').toUpperCase();
+  if (st.includes('BOOZE') || st.includes('DRINK') || st.includes('FOOD')) {
+    governanceCategory = 'survival';
+    govExplanationUa = 'Критичний пріоритет #1 (Виживання): Рівень елю/їжі нижчий за безпечний поріг. Gemini зосередила ресурси на будівництві дистилятора (Still) та варінні нових бочок для запобігання зневодненню гномів.';
+    govExplanationEn = 'Critical Priority #1 (Survival): Booze or rations below safe threshold. Gemini focused resources on Still construction and emergency brewing to prevent dwarf dehydration.';
+  } else if (st.includes('RESID') || st.includes('BED')) {
+    governanceCategory = 'residential';
+    govExplanationUa = 'Пріоритет #2 (Житло): Населення фортеці перевищує кількість спалень. Gemini призначила розкопки індивідуальних кімнат для збереження моралі та запобігання бунтам (tantrum spirals).';
+    govExplanationEn = 'Priority #2 (Residential): Fortress population exceeds available bedrooms. Gemini designated private bedroom excavation to preserve mood and stop tantrum spirals.';
+  } else if (st.includes('MIN') || st.includes('ORE') || st.includes('DELV')) {
+    governanceCategory = 'mining';
+    govExplanationUa = 'Пріоритет #3 (Шахтарство та ресурси): Gemini розвідала геологічні пласти та скерувала шахтарів на видобуток руди для металургії та створення цінностей фортеці.';
+    govExplanationEn = 'Priority #3 (Mining & Strata): Gemini prospected geological veins and tasked miners with ore extraction for metallurgy and fortress wealth.';
+  } else if (st.includes('WORKSHOP') || st.includes('MASON') || st.includes('CRAFT')) {
+    governanceCategory = 'economy';
+    govExplanationUa = 'Пріоритет #4 (Ремесла): Gemini заклала виробничий сектор для обробки каменю та деревини на меблі й блоки для зміцнення цитаделі.';
+    govExplanationEn = 'Priority #4 (Crafting): Gemini founded production workshops to process rough stone and lumber into furniture and defensive blocks.';
+  } else if (st.includes('EXPEDITION') || st.includes('DIPLOMACY') || st.includes('OVERWORLD')) {
+    governanceCategory = 'diplomacy';
+    govExplanationUa = 'Пріоритет #5 (Зовнішній світ): Базові потреби фортеці закриті, тому Gemini спорядила торговельну експедицію до сусіднього поселення на карті континенту.';
+    govExplanationEn = 'Priority #5 (Overworld): Core fortress needs secured; Gemini dispatched a trade caravan expedition to a neighboring settlement on the world map.';
+  }
+
+  const summaryPartsUa: string[] = [];
+  const summaryPartsEn: string[] = [];
+  if (miningCoords.length > 0) {
+    summaryPartsUa.push(`⛏️ Розкопки: ${miningCoords.length} блоків`);
+    summaryPartsEn.push(`⛏️ Mining: ${miningCoords.length} tiles`);
+  }
+  if (chopCoords.length > 0) {
+    summaryPartsUa.push(`🪓 Вирубка: ${chopCoords.length} дерев`);
+    summaryPartsEn.push(`🪓 Chopping: ${chopCoords.length} trees`);
+  }
+  if (buildItems.length > 0) {
+    const buildsStr = buildItems.map((b: any) => b.type.replace('build_', '')).join(', ');
+    summaryPartsUa.push(`🔨 Будівництво: ${buildItems.length} (${buildsStr})`);
+    summaryPartsEn.push(`🔨 Construction: ${buildItems.length} (${buildsStr})`);
+  }
+  if (zonesList.length > 0) {
+    summaryPartsUa.push(`🛏️ Зони/Кімнати: ${zonesList.length}`);
+    summaryPartsEn.push(`🛏️ Rooms: ${zonesList.length}`);
+  }
+  if (stockpilesList.length > 0) {
+    summaryPartsUa.push(`📦 Склади: ${stockpilesList.length}`);
+    summaryPartsEn.push(`📦 Stockpiles: ${stockpilesList.length}`);
+  }
+  if (ordersList.length > 0) {
+    const ordersStr = ordersList.map((o: any) => o.action).join(', ');
+    summaryPartsUa.push(`📜 Накази: ${ordersStr}`);
+    summaryPartsEn.push(`📜 Orders: ${ordersStr}`);
+  }
+  if (summaryPartsUa.length === 0) {
+    summaryPartsUa.push('Огляд території та підтримка стабільності');
+    summaryPartsEn.push('Territory surveillance & stability maintenance');
+  }
+
+  const actionRecord: GeminiActionRecord = {
+    id: `action_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    cycleNumber: aiState.totalCyclesExecuted + 1,
+    tick: fortress.tick,
+    calendarTime: `Year ${fortress.year}, ${fortress.season} ${fortress.day} (Tick ${fortress.tick})`,
+    realTime: new Date().toLocaleTimeString(),
+    model: responseData.source || 'gemini-3.8-flash',
+    isFallback,
+    fallbackReason,
+    statusSummary: responseData.statusSummary || 'AUTONOMOUS_OPERATING',
+    directive: aiState.directive,
+    governanceCategory,
+    thoughtProcessUa: responseData.thoughtProcessUa || aiState.thoughtProcessUa,
+    thoughtProcessEn: responseData.thoughtProcessEn || aiState.thoughtProcessEn,
+    governanceExplanation: {
+      ua: govExplanationUa,
+      en: govExplanationEn,
+    },
+    terminalCommand: terminalLine,
+    actions: {
+      miningCount: miningCoords.length,
+      miningCoords,
+      chopCount: chopCoords.length,
+      chopCoords,
+      buildCount: buildItems.length,
+      buildItems,
+      stockpilesCount: stockpilesList.length,
+      stockpiles: stockpilesList,
+      zonesCount: zonesList.length,
+      zones: zonesList,
+      ordersCount: ordersList.length,
+      orders: ordersList,
+    },
+    summaryUa: summaryPartsUa.join(' | '),
+    summaryEn: summaryPartsEn.join(' | '),
+  };
+
+  const updatedActionHistory = [actionRecord, ...(aiState.actionHistory || []).slice(0, 79)];
 
   const updatedAiState: DfAiState = {
     ...aiState,
@@ -447,7 +642,10 @@ export async function executeDfAiStep(
     aiModel: responseData.source || 'gemini-3.8-flash',
     totalCyclesExecuted: aiState.totalCyclesExecuted + 1,
     terminalLogs: updatedTerminalLogs,
+    actionHistory: updatedActionHistory,
     highlightedTiles: newHighlights,
+    isFallback,
+    fallbackReason,
   };
 
   const updatedFortress: FortressState = {

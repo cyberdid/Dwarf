@@ -43,19 +43,19 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
   if (!dwarf && !tile) return null;
 
   return (
-    <aside className="w-80 sm:w-96 flex flex-col df-gold-frame rounded-l-lg text-stone-200 h-full shadow-2xl z-20 overflow-hidden font-mono select-none">
+    <aside className="w-80 sm:w-96 flex flex-col pilgrimage-panel pilgrimage-frame rounded-l-lg text-[#f2e8d5] h-full shadow-2xl z-20 overflow-hidden select-none">
       {/* Header with Heraldry */}
-      <div className="p-3.5 bg-gradient-to-b from-[#221f1a] to-[#171512] border-b-2 border-[#5a4522] flex items-center justify-between">
+      <div className="p-3.5 bg-[#1a140d] border-b-2 border-[#8c784c] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           {dwarf ? (
             <img
               src={generateDwarfPortrait(dwarf.name, dwarf.title, dwarf.gender, dwarf.mood)}
               alt={dwarf.name}
-              className="w-12 h-12 rounded border-2 border-[#785b28] shadow-md image-pixelated bg-[#1c1917] shrink-0"
+              className="w-12 h-12 rounded border-2 border-[#bea067] shadow-md image-pixelated bg-[#140e06] shrink-0"
               style={{ imageRendering: 'pixelated' }}
             />
           ) : (
-            <div className="w-12 h-12 rounded border-2 border-[#785b28] bg-[#1e1b17] flex items-center justify-center text-amber-400 font-cinzel text-base shrink-0">
+            <div className="w-12 h-12 rounded border-2 border-[#bea067] bg-[#140e06] flex items-center justify-center text-[#f5d576] font-cinzel text-base shrink-0">
               ⚒
             </div>
           )}
@@ -64,7 +64,7 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
             <h3 className="font-cinzel font-bold text-sm text-[#f5d576] tracking-wide">
               {dwarf ? dwarf.name : `${lang === 'ua' ? 'Блок породи' : 'Strata Tile'}`}
             </h3>
-            <span className="text-[11px] text-stone-400 font-medieval">
+            <span className="text-[12px] text-[#c7b897] font-garamond italic">
               {dwarf
                 ? `${dwarf.title} • ${dwarf.age} ${lang === 'ua' ? 'р.' : 'yo'} (${dwarf.gender === 'male' ? (lang === 'ua' ? 'Чол.' : 'Male') : (lang === 'ua' ? 'Жін.' : 'Female')})`
                 : `${tile?.material.toUpperCase()} (X:${tile?.x}, Y:${tile?.y}, Z:${tile?.z})`}
@@ -74,7 +74,7 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
 
         <button
           onClick={onClose}
-          className="p-1 text-stone-400 hover:text-amber-300 hover:bg-stone-800 rounded transition-colors"
+          className="p-1 text-[#c7b897] hover:text-[#fef0c7] hover:bg-[#302719] rounded transition-colors"
           title="Close Inspector"
         >
           <X className="w-4 h-4" />
@@ -85,15 +85,15 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
       {dwarf ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Sub-Navigation Tabs */}
-          <div className="px-3 py-1.5 bg-[#12110f] border-b border-[#3d321d] flex items-center justify-between text-xs">
+          <div className="px-3 py-1.5 bg-[#140e06] border-b border-[#52432a] flex items-center justify-between text-xs">
             {(['overview', 'needs', 'skills', 'inventory'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-2 py-1 rounded font-cinzel text-[11px] transition-colors ${
+                className={`px-2.5 py-1 rounded font-cinzel text-[11px] transition-colors ${
                   activeTab === tab
-                    ? 'bg-[#3b301a] text-amber-300 font-bold border border-[#785b28]'
-                    : 'text-stone-400 hover:text-stone-200'
+                    ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                    : 'text-[#c7b897] hover:text-[#f2e8d5]'
                 }`}
               >
                 {tab === 'overview'
@@ -111,9 +111,9 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
             {activeTab === 'overview' && (
               <>
                 {/* Mood & Emotional State */}
-                <div className="bg-[#151311] border border-[#3b2f1a] rounded-lg p-3 space-y-2.5">
+                <div className="bg-[#18130c] border border-[#52432a] rounded-lg p-3 space-y-2.5 shadow-inner">
                   <div className="flex items-center justify-between">
-                    <span className="text-stone-400 flex items-center gap-1.5 font-cinzel">
+                    <span className="text-[#c7b897] flex items-center gap-1.5 font-cinzel text-[11px]">
                       <Heart className="w-3.5 h-3.5 text-rose-400" />
                       {lang === 'ua' ? 'Настрій' : 'Emotional State'}:
                     </span>
@@ -123,20 +123,20 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
                   </div>
 
                   {/* Current Active Task */}
-                  <div className="pt-1 border-t border-[#2a2213]">
-                    <span className="text-[11px] text-stone-400 font-cinzel">
+                  <div className="pt-1.5 border-t border-[#3b2f1c]">
+                    <span className="text-[11px] text-[#c7b897] font-cinzel">
                       {lang === 'ua' ? 'Поточна праця:' : 'Current Activity:'}
                     </span>
-                    <p className="text-amber-300 font-semibold mt-0.5 flex items-center gap-1.5">
+                    <p className="text-[#f5d576] font-garamond text-sm font-semibold mt-0.5 flex items-center gap-1.5">
                       <Activity className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                       {dwarf.currentTask
                         ? (lang === 'ua' ? dwarf.currentTask.descriptionUa : dwarf.currentTask.descriptionEn)
                         : (lang === 'ua' ? 'Відпочиває та оглядає фортецю' : 'Resting and socializing')}
                     </p>
                     {dwarf.currentTask && (
-                      <div className="w-full bg-[#241f18] h-1.5 rounded-full mt-2 overflow-hidden border border-[#3d321d]">
+                      <div className="w-full bg-[#120d06] h-2 rounded-full mt-2 overflow-hidden border border-[#52432a]">
                         <div
-                          className="bg-amber-400 h-full transition-all duration-300"
+                          className="bg-gradient-to-r from-[#bea067] to-[#f5d576] h-full transition-all duration-300"
                           style={{
                             width: `${Math.min(100, (dwarf.currentTask.progress / dwarf.currentTask.maxProgress) * 100)}%`
                           }}
@@ -157,13 +157,13 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
                     {dwarf.thoughts.slice(-4).map(t => (
                       <div
                         key={t.id}
-                        className={`p-2.5 rounded border text-[11px] leading-relaxed ${
+                        className={`p-2.5 rounded border text-xs font-garamond leading-relaxed ${
                           t.positive
-                            ? 'bg-[#122415]/60 border-[#1f4a25] text-emerald-300'
-                            : 'bg-[#291414]/60 border-[#542424] text-rose-300'
+                            ? 'bg-[#18281b] border-[#2f663a] text-emerald-300'
+                            : 'bg-[#2b1717] border-[#6b2b2b] text-rose-300'
                         }`}
                       >
-                        <span>{t.positive ? '✦ ' : '✖ '}</span>
+                        <span className="font-cinzel text-[10px]">{t.positive ? '✦ ' : '✖ '}</span>
                         {lang === 'ua' ? t.textUa : t.textEn}
                       </div>
                     ))}
@@ -173,26 +173,26 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
                 {/* Attributes */}
                 <div className="space-y-2">
                   <h4 className="text-[#f5d576] font-cinzel font-bold text-xs tracking-wider flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-amber-400" />
+                    <Shield className="w-3.5 h-3.5 text-[#d4b57a]" />
                     {lang === 'ua' ? 'Фізичні параметри' : 'Physical Attributes'}
                   </h4>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-[#151311] p-2 rounded border border-[#3b2f1a] flex justify-between">
-                      <span className="text-stone-400">{lang === 'ua' ? 'Сила' : 'Strength'}:</span>
-                      <span className="text-stone-100 font-bold">{dwarf.stats.strength}</span>
+                    <div className="bg-[#18130c] p-2 rounded border border-[#52432a] flex justify-between font-garamond text-sm">
+                      <span className="text-[#c7b897]">{lang === 'ua' ? 'Сила' : 'Strength'}:</span>
+                      <span className="text-[#f2e8d5] font-bold">{dwarf.stats.strength}</span>
                     </div>
-                    <div className="bg-[#151311] p-2 rounded border border-[#3b2f1a] flex justify-between">
-                      <span className="text-stone-400">{lang === 'ua' ? 'Спритність' : 'Agility'}:</span>
-                      <span className="text-stone-100 font-bold">{dwarf.stats.agility}</span>
+                    <div className="bg-[#18130c] p-2 rounded border border-[#52432a] flex justify-between font-garamond text-sm">
+                      <span className="text-[#c7b897]">{lang === 'ua' ? 'Спритність' : 'Agility'}:</span>
+                      <span className="text-[#f2e8d5] font-bold">{dwarf.stats.agility}</span>
                     </div>
-                    <div className="bg-[#151311] p-2 rounded border border-[#3b2f1a] flex justify-between">
-                      <span className="text-stone-400">{lang === 'ua' ? 'Інтелект' : 'Intelligence'}:</span>
-                      <span className="text-stone-100 font-bold">{dwarf.stats.intelligence}</span>
+                    <div className="bg-[#18130c] p-2 rounded border border-[#52432a] flex justify-between font-garamond text-sm">
+                      <span className="text-[#c7b897]">{lang === 'ua' ? 'Інтелект' : 'Intelligence'}:</span>
+                      <span className="text-[#f2e8d5] font-bold">{dwarf.stats.intelligence}</span>
                     </div>
-                    <div className="bg-[#151311] p-2 rounded border border-[#3b2f1a] flex justify-between">
-                      <span className="text-stone-400">{lang === 'ua' ? 'Витривалість' : 'Endurance'}:</span>
-                      <span className="text-stone-100 font-bold">{dwarf.stats.endurance}</span>
+                    <div className="bg-[#18130c] p-2 rounded border border-[#52432a] flex justify-between font-garamond text-sm">
+                      <span className="text-[#c7b897]">{lang === 'ua' ? 'Витривалість' : 'Endurance'}:</span>
+                      <span className="text-[#f2e8d5] font-bold">{dwarf.stats.endurance}</span>
                     </div>
                   </div>
                 </div>
@@ -203,7 +203,7 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
               <div className="space-y-3">
                 <h4 className="text-[#f5d576] font-cinzel font-bold text-xs tracking-wider flex items-center gap-1.5">
                   <Brain className="w-3.5 h-3.5 text-sky-400" />
-                  {lang === 'ua' ? 'Ієрархія потреб (ШІ)' : 'Hierarchy of Needs'}
+                  {lang === 'ua' ? 'Ієрархія потреб' : 'Hierarchy of Needs'}
                 </h4>
 
                 <NeedBar
@@ -261,9 +261,9 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
 
                 <div className="space-y-1.5">
                   {dwarf.inventory.map((inv, idx) => (
-                    <div key={idx} className="bg-[#151311] p-2.5 rounded border border-[#3b2f1a] flex items-center justify-between">
-                      <span className="text-stone-300 font-medium capitalize">{inv.type.replace('_', ' ')}</span>
-                      <span className="text-amber-400 font-bold">x{inv.count}</span>
+                    <div key={idx} className="bg-[#18130c] p-2.5 rounded border border-[#52432a] flex items-center justify-between font-garamond text-sm">
+                      <span className="text-[#f2e8d5] font-medium capitalize">{inv.type.replace('_', ' ')}</span>
+                      <span className="text-[#f5d576] font-bold font-mono">x{inv.count}</span>
                     </div>
                   ))}
                 </div>
@@ -274,24 +274,24 @@ export const DwarfDossier: React.FC<DwarfDossierProps> = ({
       ) : tile ? (
         /* Strata Tile Inspector */
         <div className="p-4 space-y-4 text-xs font-mono">
-          <div className="bg-[#151311] border border-[#3b2f1a] rounded-lg p-3 space-y-2">
-            <h4 className="font-cinzel text-amber-300 font-bold text-xs">
+          <div className="bg-[#18130c] border border-[#52432a] rounded-lg p-3 space-y-2">
+            <h4 className="font-cinzel text-[#f5d576] font-bold text-xs">
               {lang === 'ua' ? 'Геологічні властивості' : 'Geological Properties'}
             </h4>
-            <div className="flex justify-between py-1 border-b border-[#241f17]">
-              <span className="text-stone-400">{lang === 'ua' ? 'Матеріал' : 'Material'}:</span>
-              <span className="text-stone-200 font-bold uppercase">{tile.material}</span>
+            <div className="flex justify-between py-1 border-b border-[#3b2f1c]">
+              <span className="text-[#c7b897]">{lang === 'ua' ? 'Матеріал' : 'Material'}:</span>
+              <span className="text-[#f2e8d5] font-bold uppercase">{tile.material}</span>
             </div>
-            <div className="flex justify-between py-1 border-b border-[#241f17]">
-              <span className="text-stone-400">{lang === 'ua' ? 'Твердість' : 'Hardness'}:</span>
-              <span className="text-amber-400 font-bold">{tile.hardness} / {tile.maxHardness}</span>
+            <div className="flex justify-between py-1 border-b border-[#3b2f1c]">
+              <span className="text-[#c7b897]">{lang === 'ua' ? 'Твердість' : 'Hardness'}:</span>
+              <span className="text-[#f5d576] font-bold">{tile.hardness} / {tile.maxHardness}</span>
             </div>
-            <div className="flex justify-between py-1 border-b border-[#241f17]">
-              <span className="text-stone-400">{lang === 'ua' ? 'Вологість' : 'Water Level'}:</span>
+            <div className="flex justify-between py-1 border-b border-[#3b2f1c]">
+              <span className="text-[#c7b897]">{lang === 'ua' ? 'Вологість' : 'Water Level'}:</span>
               <span className="text-sky-400 font-bold">{tile.waterLevel}/7</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-stone-400">{lang === 'ua' ? 'Призначення' : 'Designation'}:</span>
+              <span className="text-[#c7b897]">{lang === 'ua' ? 'Призначення' : 'Designation'}:</span>
               <span className="text-rose-400 font-bold uppercase">{tile.designation}</span>
             </div>
           </div>

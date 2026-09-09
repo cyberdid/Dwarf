@@ -18,7 +18,11 @@ import {
   Cpu,
   Globe,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Save,
+  Download,
+  Upload,
+  Mountain
 } from 'lucide-react';
 
 interface FortressHeaderProps {
@@ -27,10 +31,11 @@ interface FortressHeaderProps {
   maxZ: number;
   isRunning: boolean;
   speed: number;
-  renderMode: 'ascii' | 'graphic';
+  renderMode: 'ascii' | 'graphic' | 'isometric';
   activeTab: 'simulation' | 'raw_explorer' | 'analysis' | 'pixel_codex';
   revealAll?: boolean;
   lang: 'en' | 'ua';
+  hasSavedGame?: boolean;
   onTogglePlay: () => void;
   onStepTick: () => void;
   onChangeSpeed: (speed: number) => void;
@@ -44,6 +49,9 @@ interface FortressHeaderProps {
   onOpenStocks: () => void;
   onOpenOverworld?: () => void;
   onOpenHelp?: () => void;
+  onSaveFortress?: () => void;
+  onLoadFortress?: () => void;
+  onExportFortress?: () => void;
 }
 
 export const FortressHeader: React.FC<FortressHeaderProps> = ({
@@ -54,6 +62,10 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
   activeTab,
   revealAll = false,
   lang,
+  hasSavedGame = false,
+  onSaveFortress,
+  onLoadFortress,
+  onExportFortress,
   onTogglePlay,
   onStepTick,
   onChangeSpeed,
@@ -121,57 +133,57 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
       : `Late ${state.season}`;
 
   return (
-    <header className="bg-[#171513] border-b-2 border-[#5a4522] text-stone-200 select-none shadow-xl z-30 shrink-0">
+    <header className="bg-[#1a1208] border-b-2 border-[#8c784c] text-[#f2e8d5] select-none shadow-2xl z-30 shrink-0">
       {/* Top Utility & Navigation Tier */}
-      <div className="px-3 py-1 bg-[#100f0e] border-b border-[#2e2619] flex items-center justify-between text-xs font-mono">
+      <div className="px-3 py-1 bg-[#140e06] border-b border-[#3d321d] flex items-center justify-between text-xs font-mono">
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2">
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1.5">
             <button
               onClick={() => onSwitchTab('simulation')}
-              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel ${
+              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel tracking-wider ${
                 activeTab === 'simulation'
-                  ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                  : 'text-stone-400 hover:text-amber-300 hover:bg-stone-900'
+                  ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold shadow-md border border-[#bea067]'
+                  : 'pilgrimage-action text-[#c7b897]'
               }`}
             >
-              <Globe className="w-3.5 h-3.5" />
+              <Globe className="w-3.5 h-3.5 text-[#d4b57a]" />
               <span>{lang === 'ua' ? 'ФОРТЕЦЯ' : 'FORTRESS'}</span>
             </button>
 
             <button
               onClick={() => onSwitchTab('raw_explorer')}
-              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel ${
+              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel tracking-wider ${
                 activeTab === 'raw_explorer'
-                  ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                  : 'text-stone-400 hover:text-amber-300 hover:bg-stone-900'
+                  ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold shadow-md border border-[#bea067]'
+                  : 'pilgrimage-action text-[#c7b897]'
               }`}
             >
-              <FileCode2 className="w-3.5 h-3.5" />
+              <FileCode2 className="w-3.5 h-3.5 text-[#d4b57a]" />
               <span>{lang === 'ua' ? 'RAW РЕЄСТР' : 'RAW REGISTRY'}</span>
             </button>
 
             <button
               onClick={() => onSwitchTab('analysis')}
-              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel ${
+              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel tracking-wider ${
                 activeTab === 'analysis'
-                  ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                  : 'text-stone-400 hover:text-amber-300 hover:bg-stone-900'
+                  ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold shadow-md border border-[#bea067]'
+                  : 'pilgrimage-action text-[#c7b897]'
               }`}
             >
-              <Cpu className="w-3.5 h-3.5" />
+              <Cpu className="w-3.5 h-3.5 text-[#d4b57a]" />
               <span>{lang === 'ua' ? 'АНАЛІЗ КОДУ' : 'CODE ARCHITECTURE'}</span>
             </button>
 
             <button
               onClick={() => onSwitchTab('pixel_codex')}
-              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel ${
+              className={`px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel tracking-wider ${
                 activeTab === 'pixel_codex'
-                  ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                  : 'text-stone-400 hover:text-amber-300 hover:bg-stone-900'
+                  ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold shadow-md border border-[#bea067]'
+                  : 'pilgrimage-action text-[#c7b897]'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <Sparkles className="w-3.5 h-3.5 text-[#d4b57a]" />
               <span>{lang === 'ua' ? 'ПІКСЕЛЬНІ АРТИ' : 'PIXEL CODEX'}</span>
             </button>
 
@@ -179,10 +191,10 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
               <button
                 id="btn-nav-overworld"
                 onClick={onOpenOverworld}
-                className="px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 hover:border-amber-500 shadow-sm"
+                className="px-3 py-1 rounded text-xs transition-all flex items-center gap-1.5 font-cinzel tracking-wider bg-gradient-to-b from-[#3a2211] to-[#251509] hover:from-[#4d2d17] hover:to-[#331c0c] text-[#fde047] border border-[#a16207] shadow-sm"
                 title="Відкрити глобальну карту світу та експедиції (Клавіша M)"
               >
-                <Globe className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <Globe className="w-3.5 h-3.5 text-[#facc15] animate-pulse" />
                 <span>{lang === 'ua' ? 'КАРТА СВІТУ (M)' : 'OVERWORLD (M)'}</span>
               </button>
             )}
@@ -194,7 +206,7 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
           {/* Add Migrant */}
           <button
             onClick={onAddDwarf}
-            className="px-2 py-0.5 df-btn-bevel rounded text-stone-300 hover:text-amber-300 transition-colors flex items-center gap-1 text-[11px]"
+            className="px-2.5 py-0.5 pilgrimage-action rounded text-stone-300 hover:text-amber-200 transition-colors flex items-center gap-1 text-[11px]"
             title={lang === 'ua' ? 'Викликати мігрантів' : 'Summon Migrants'}
           >
             <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
@@ -204,21 +216,75 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
           {/* Regenerate World */}
           <button
             onClick={onRegenerateWorld}
-            className="px-2 py-0.5 df-btn-bevel rounded text-stone-300 hover:text-amber-300 transition-colors flex items-center gap-1 text-[11px]"
+            className="px-2.5 py-0.5 pilgrimage-action rounded text-stone-300 hover:text-amber-200 transition-colors flex items-center gap-1 text-[11px]"
             title={lang === 'ua' ? 'Згенерувати новий світ' : 'Regenerate World'}
           >
             <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline">{lang === 'ua' ? 'Новий світ' : 'New World'}</span>
           </button>
 
-          {/* Toggle Graphic / ASCII Mode */}
+          {/* Save Fortress (Royal Archive) */}
+          {onSaveFortress && (
+            <button
+              onClick={onSaveFortress}
+              className="px-2.5 py-0.5 pilgrimage-action rounded text-amber-300 hover:text-amber-100 transition-colors flex items-center gap-1 text-[11px] font-medium"
+              title={lang === 'ua' ? 'Зберегти фортецю в локальний архів' : 'Save Fortress to Local Archive'}
+            >
+              <Save className="w-3.5 h-3.5 text-amber-400" />
+              <span>{lang === 'ua' ? 'Зберегти' : 'Save'}</span>
+            </button>
+          )}
+
+          {/* Load Fortress */}
+          {onLoadFortress && hasSavedGame && (
+            <button
+              onClick={onLoadFortress}
+              className="px-2.5 py-0.5 pilgrimage-action rounded text-emerald-300 hover:text-emerald-100 transition-colors flex items-center gap-1 text-[11px]"
+              title={lang === 'ua' ? 'Завантажити фортецю з архіву' : 'Load Fortress from Archive'}
+            >
+              <Upload className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{lang === 'ua' ? 'Завантажити' : 'Load'}</span>
+            </button>
+          )}
+
+          {/* Export JSON */}
+          {onExportFortress && (
+            <button
+              onClick={onExportFortress}
+              className="px-2 py-0.5 pilgrimage-action rounded text-stone-300 hover:text-amber-200 transition-colors flex items-center gap-1 text-[11px]"
+              title={lang === 'ua' ? 'Завантажити файл збереження .json' : 'Download Fortress .json file'}
+            >
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden md:inline">{lang === 'ua' ? 'Експорт' : 'Export'}</span>
+            </button>
+          )}
+
+          {/* Toggle Graphic / Isometric 3D / ASCII Mode */}
           <button
             onClick={onToggleRenderMode}
-            className="px-2 py-0.5 df-btn-bevel rounded text-stone-300 hover:text-amber-300 transition-colors flex items-center gap-1 text-[11px]"
-            title="Toggle Graphics / ASCII CP437"
+            className={`px-2.5 py-0.5 rounded transition-all flex items-center gap-1.5 text-[11px] font-medium ${
+              renderMode === 'isometric'
+                ? 'bg-gradient-to-r from-amber-950 to-[#2c2114] border border-[#d4af37] text-amber-200 shadow-sm'
+                : 'pilgrimage-action text-stone-300 hover:text-amber-200'
+            }`}
+            title={lang === 'ua' ? 'Перемкнути: 2D Графіка -> Піксельний світ Pilgrimage -> ASCII CP437' : 'Switch Mode: 2D Graphic -> Pilgrimage Pixel Art -> ASCII CP437'}
           >
-            <Eye className="w-3.5 h-3.5 text-sky-400" />
-            <span>{renderMode === 'graphic' ? 'Graphic Tiles' : 'ASCII CP437'}</span>
+            {renderMode === 'isometric' ? (
+              <>
+                <Mountain className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-semibold text-[#fef08a]">{lang === 'ua' ? 'Pilgrimage Піксель-Арт' : 'Pilgrimage Pixel Art'}</span>
+              </>
+            ) : renderMode === 'graphic' ? (
+              <>
+                <Eye className="w-3.5 h-3.5 text-sky-400" />
+                <span>{lang === 'ua' ? '2D Графіка' : '2D Graphic'}</span>
+              </>
+            ) : (
+              <>
+                <FileCode2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>ASCII CP437</span>
+              </>
+            )}
           </button>
 
           {/* Reveal Map (DFHack reveal toggle) */}
@@ -226,14 +292,14 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
             <button
               id="btn-header-toggle-reveal"
               onClick={onToggleRevealAll}
-              className={`px-2 py-0.5 df-btn-bevel rounded transition-colors flex items-center gap-1 text-[11px] ${
+              className={`px-2.5 py-0.5 rounded transition-colors flex items-center gap-1 text-[11px] ${
                 revealAll
-                  ? 'bg-amber-600/90 text-stone-950 font-bold shadow-sm'
-                  : 'text-stone-300 hover:text-amber-300'
+                  ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow-sm'
+                  : 'pilgrimage-action text-stone-300 hover:text-amber-300'
               }`}
               title={lang === 'ua' ? 'Розкрити карту (DFHack reveal)' : 'Reveal Map (DFHack reveal)'}
             >
-              <Eye className={`w-3.5 h-3.5 ${revealAll ? 'text-stone-950' : 'text-amber-400'}`} />
+              <Eye className={`w-3.5 h-3.5 ${revealAll ? 'text-[#fef0c7]' : 'text-amber-400'}`} />
               <span>{revealAll ? (lang === 'ua' ? 'Карта: Відкрита' : 'Map: Revealed') : (lang === 'ua' ? 'Розкрити карту' : 'Reveal Map')}</span>
             </button>
           )}
@@ -241,7 +307,7 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
           {/* Language */}
           <button
             onClick={onToggleLang}
-            className="px-2 py-0.5 df-btn-bevel rounded font-bold text-amber-300 hover:text-amber-200 transition-colors text-[11px]"
+            className="px-2.5 py-0.5 pilgrimage-action rounded font-bold text-[#f5d576] hover:text-[#fef08a] transition-colors text-[11px]"
           >
             {lang === 'ua' ? '🇺🇦 UA' : '🇬🇧 EN'}
           </button>
@@ -249,21 +315,21 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
       </div>
 
       {/* Primary Dwarf Fortress Steam Header Bar */}
-      <div className="px-3 py-1.5 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-b from-[#221f1b] to-[#171513]">
+      <div className="px-3 py-1.5 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-b from-[#211e16] to-[#17140e]">
         {/* Left Side: Fortress Heraldry & Name */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded bg-[#2e261a] border border-[#785b28] flex items-center justify-center font-cinzel font-bold text-amber-400 text-sm shadow-inner">
+            <div className="w-8 h-8 rounded bg-[#2e261a] border-2 border-[#8c784c] flex items-center justify-center font-cinzel font-bold text-[#f5d576] text-sm shadow-inner" style={{ boxShadow: 'inset 0 0 0 1px #b19a60' }}>
               ⚒
             </div>
             <div className="flex flex-col leading-tight font-cinzel">
               <span className="font-bold text-sm tracking-wider text-[#f5d576] drop-shadow-sm">
                 Medtobrir
               </span>
-              <span className="text-[10px] text-stone-400 tracking-wide font-medieval">
+              <span className="text-[11px] text-[#c7b897] tracking-wide font-garamond italic">
                 Blockadeear
               </span>
-              <span className="text-[9px] text-[#a89060] uppercase tracking-widest">
+              <span className="text-[9px] text-[#a89060] uppercase tracking-widest font-mono">
                 {lang === 'ua' ? 'Поселення' : 'Village'}
               </span>
             </div>
@@ -274,12 +340,12 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
           {/* Population & 7 Mood Indicators */}
           <div className="flex items-center gap-3">
             <div className="flex flex-col items-center">
-              <span className="text-[10px] text-stone-400 font-cinzel uppercase tracking-tight">Pop</span>
-              <span className="font-bold text-sm text-stone-100 font-mono">{state.dwarves.length}</span>
+              <span className="text-[10px] text-[#a89060] font-cinzel uppercase tracking-tight">Pop</span>
+              <span className="font-bold text-sm text-[#f2e8d5] font-mono">{state.dwarves.length}</span>
             </div>
 
             {/* The 7 Official DF Smileys with counts */}
-            <div className="flex items-center gap-1.5 bg-[#121110] px-2 py-1 rounded border border-[#3b2f1a]">
+            <div className="flex items-center gap-1.5 bg-[#140e06] px-2 py-1 rounded border border-[#52432a]" style={{ boxShadow: 'inset 0 0 0 1px #221c13' }}>
               {/* 1. Ecstatic */}
               <div className="flex flex-col items-center" title="Ecstatic">
                 <span className="text-xs text-[#15803d]">😄</span>
@@ -323,7 +389,7 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
           {/* [ Stocks ] Button */}
           <button
             onClick={onOpenStocks}
-            className="px-3 py-1 df-btn-bevel rounded text-xs font-cinzel font-bold text-amber-200 hover:text-amber-100 flex items-center gap-1.5 transition-all"
+            className="px-3 py-1 pilgrimage-action rounded text-xs font-cinzel font-bold text-[#f5d576] hover:text-[#fef08a] flex items-center gap-1.5 transition-all"
             title="Open Fortress Inventory Ledger"
           >
             <Package className="w-3.5 h-3.5 text-amber-400" />
@@ -379,7 +445,7 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
         {/* Right Side: Moon Phase, Calendar Date, Speed Controls */}
         <div className="flex items-center gap-3">
           {/* Calendar Display */}
-          <div className="flex items-center gap-2 bg-[#121110] px-2.5 py-1 rounded border border-[#3b2f1a]">
+          <div className="flex items-center gap-2 bg-[#140e06] px-2.5 py-1 rounded border border-[#52432a]">
             {/* Moon Phase Icon */}
             <div className="text-stone-300 text-sm" title="Moon Phase: Waxing Gibbous">
               🌔
@@ -388,19 +454,19 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
               <span className="text-xs font-bold text-[#f5d576]">
                 {dayOrdinal} {monthName}
               </span>
-              <span className="text-[10px] text-stone-400">
+              <span className="text-[11px] text-[#c7b897] font-garamond italic">
                 {seasonText}, Year {state.year}
               </span>
             </div>
           </div>
 
           {/* Time Speed Controls */}
-          <div className="flex items-center bg-[#121110] border border-[#3b2f1a] rounded p-0.5">
+          <div className="flex items-center bg-[#140e06] border border-[#52432a] rounded p-0.5">
             {/* Pause / Play */}
             <button
               onClick={onTogglePlay}
               className={`p-1.5 rounded transition-colors ${
-                isRunning ? 'bg-amber-600 text-stone-950 font-bold' : 'text-stone-400 hover:text-amber-300'
+                isRunning ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold shadow-sm' : 'text-[#c7b897] hover:text-[#f5d576]'
               }`}
               title={isRunning ? 'Pause (Space)' : 'Play (Space)'}
             >
@@ -410,21 +476,21 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
             {/* Step 1 Tick */}
             <button
               onClick={onStepTick}
-              className="px-2 py-1 text-stone-400 hover:text-amber-300 font-bold text-xs"
+              className="px-2 py-1 text-[#c7b897] hover:text-[#f5d576] font-bold text-xs"
               title="Step Single Tick (.)"
             >
               .
             </button>
 
             {/* Speeds: 1x, 2x, 5x */}
-            <div className="flex items-center pl-1 border-l border-[#2e2619]">
+            <div className="flex items-center pl-1 border-l border-[#3d321d]">
               {[1, 2, 5].map(s => (
                 <button
                   key={s}
                   onClick={() => onChangeSpeed(s)}
                   className={`px-1.5 py-0.5 text-xs font-mono rounded transition-colors ${
                     speed === s
-                      ? 'bg-[#3d321d] text-amber-300 font-bold'
+                      ? 'bg-[#3d321d] text-[#f5d576] font-bold border border-[#8c784c]'
                       : 'text-stone-500 hover:text-stone-300'
                   }`}
                 >
@@ -438,7 +504,7 @@ export const FortressHeader: React.FC<FortressHeaderProps> = ({
           {onOpenHelp && (
             <button
               onClick={onOpenHelp}
-              className="p-1.5 df-btn-bevel rounded text-stone-400 hover:text-amber-300"
+              className="p-1.5 pilgrimage-action rounded text-stone-300 hover:text-amber-200"
               title="Controls & Shortcuts"
             >
               <HelpCircle className="w-4 h-4" />

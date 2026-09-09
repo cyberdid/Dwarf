@@ -56,28 +56,28 @@ export const PALETTE = {
   adamantine_light: '#22d3ee',
   adamantine_glow: '#a5f3fc',
 
-  // Dirt & Wood
-  dirt_dark: '#27180e',
-  dirt_mid: '#452a16',
-  dirt_light: '#6d4323',
-  wood_dark: '#381a07',
-  wood_mid: '#633112',
-  wood_light: '#924b1d',
-  wood_high: '#c9773b',
+  // Dirt & Wood (Pilgrimage Earth & Timber)
+  dirt_dark: '#2d1f14',
+  dirt_mid: '#5c4125',
+  dirt_light: '#916d42',
+  wood_dark: '#301b0c',
+  wood_mid: '#5e371b',
+  wood_light: '#965e31',
+  wood_high: '#c99b65',
 
-  // Vegetation
-  grass_dark: '#14532d',
-  grass_mid: '#166534',
-  grass_light: '#22c55e',
-  grass_high: '#86efac',
-  flower_yellow: '#facc15',
-  flower_red: '#f43f5e',
+  // Vegetation (Pilgrimage Deep Moss & Meadow Greens)
+  grass_dark: '#2c3a1e',
+  grass_mid: '#4b5f30',
+  grass_light: '#728847',
+  grass_high: '#95ad5d',
+  flower_yellow: '#eab308',
+  flower_red: '#e11d48',
 
-  // Water
-  water_deep: '#0c4a6e',
-  water_mid: '#0284c7',
-  water_light: '#38bdf8',
-  water_foam: '#e0f2fe',
+  // Water (Pilgrimage River Cobalt)
+  water_deep: '#1b344d',
+  water_mid: '#2d5378',
+  water_light: '#4b7ea8',
+  water_foam: '#cbe0f0',
 
   // Dwarf Flesh & Hair
   skin_shadow: '#fca5a5',

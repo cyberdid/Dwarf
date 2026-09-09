@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, X, Play, Pause, RefreshCw, Send, CheckCircle2, Shield, Cpu, Flame, Eye } from 'lucide-react';
+import { Terminal, X, Play, Pause, RefreshCw, Send, CheckCircle2, Shield, Cpu, Flame, Eye, ScrollText } from 'lucide-react';
 import { DfAiState, DfAiLogEntry } from '../engine/dfAiClient';
 
 interface DfHackConsoleModalProps {
@@ -9,6 +9,7 @@ interface DfHackConsoleModalProps {
   onToggleActive: () => void;
   onRunStep: () => void;
   onSendCommand: (cmd: string) => void;
+  onOpenGeminiLog?: () => void;
   revealAll: boolean;
   onToggleRevealAll: () => void;
   lang: 'ua' | 'en';
@@ -21,6 +22,7 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
   onToggleActive,
   onRunStep,
   onSendCommand,
+  onOpenGeminiLog,
   revealAll,
   onToggleRevealAll,
   lang,
@@ -46,6 +48,7 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
   const quickCommands = [
     { label: 'df-ai status', cmd: 'df-ai status' },
     { label: 'df-ai step', cmd: 'df-ai step' },
+    { label: 'gemini-log', cmd: 'gemini-log' },
     { label: aiState.isActive ? 'disable df-ai' : 'enable df-ai', cmd: aiState.isActive ? 'disable df-ai' : 'enable df-ai' },
     { label: revealAll ? 'unreveal' : 'reveal map', cmd: revealAll ? 'unreveal' : 'reveal' },
     { label: 'order brew', cmd: 'order brew' },
@@ -137,6 +140,17 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 ${aiState.isThinking ? 'animate-spin' : ''}`} />
               <span>df-ai step</span>
             </button>
+
+            {onOpenGeminiLog && (
+              <button
+                onClick={onOpenGeminiLog}
+                className="px-3 py-1 bg-stone-900 hover:bg-stone-800 text-amber-300 border border-amber-600/70 rounded font-bold flex items-center gap-1.5"
+                title={lang === 'ua' ? 'Відкрити розширений журнал рішень та дій Gemini' : 'Open Gemini Action & Governance Log'}
+              >
+                <ScrollText className="w-3.5 h-3.5 text-amber-400" />
+                <span>{lang === 'ua' ? 'Журнал Gemini' : 'Gemini Log'}</span>
+              </button>
+            )}
           </div>
         </div>
 

@@ -6,6 +6,8 @@
 import { FortressState, DwarfEntity, Tile, FortressEvent, WorldItem, DwarfThought, DwarfMood } from '../types/simulation';
 import { findPath3D } from './pathfinding';
 import { buildTaskIndex, updateTileInTaskIndex } from './taskIndex';
+import { particleManager } from './particleSystem';
+import { TILE_SIZE } from './tileGraphics';
 
 export function runSimulationTick(
   state: FortressState,
@@ -529,11 +531,43 @@ export function runSimulationTick(
       updatedDwarf.y = nextStep[1];
       updatedDwarf.z = nextStep[2];
       updatedDwarf.path = updatedDwarf.path.slice(1);
+
+      if (Math.random() < 0.25) {
+        particleManager.emitFootstep(
+          updatedDwarf.x * TILE_SIZE + TILE_SIZE / 2,
+          updatedDwarf.y * TILE_SIZE + TILE_SIZE / 2,
+          updatedDwarf.z
+        );
+      }
       return updatedDwarf;
     }
 
     // Arrived at destination or adjacent tile - work on task
     task.progress += 1;
+
+    // Emit live work VFX particles
+    if (task.type === 'mining') {
+      const targetTile = tiles[task.targetZ]?.[task.targetY]?.[task.targetX];
+      particleManager.emitMiningSparks(
+        task.targetX * TILE_SIZE + TILE_SIZE / 2,
+        task.targetY * TILE_SIZE + TILE_SIZE / 2,
+        task.targetZ,
+        targetTile?.material || 'stone'
+      );
+    } else if (task.type === 'chopping') {
+      particleManager.emitWoodcutting(
+        task.targetX * TILE_SIZE + TILE_SIZE / 2,
+        task.targetY * TILE_SIZE + TILE_SIZE / 2,
+        task.targetZ
+      );
+    } else if (task.type === 'building') {
+      particleManager.emitMiningSparks(
+        task.targetX * TILE_SIZE + TILE_SIZE / 2,
+        task.targetY * TILE_SIZE + TILE_SIZE / 2,
+        task.targetZ,
+        'stone'
+      );
+    }
 
     if (task.progress >= task.maxProgress) {
       // Task Complete!

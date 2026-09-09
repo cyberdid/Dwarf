@@ -32,9 +32,16 @@ import { HelpModal } from './components/HelpModal';
 import { OverworldView } from './components/OverworldView';
 import { DfAiToolbar } from './components/DfAiToolbar';
 import { DfHackConsoleModal } from './components/DfHackConsoleModal';
+import { GeminiLogModal } from './components/GeminiLogModal';
 import { DfAiState, INITIAL_DF_AI_STATE, executeDfAiStep } from './engine/dfAiClient';
 import { canPlaceBuilding } from './engine/buildingRules';
 import { buildTaskIndex, updateTileInTaskIndex } from './engine/taskIndex';
+import {
+  saveFortressToStorage,
+  loadFortressFromStorage,
+  getSavedFortressMetadata,
+  exportFortressToJsonFile,
+} from './engine/saveSystem';
 
 export default function App() {
   // Application Language & Navigation State
@@ -47,6 +54,7 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isOverworldOpen, setIsOverworldOpen] = useState<boolean>(false);
   const [isDfHackOpen, setIsDfHackOpen] = useState<boolean>(false);
+  const [isGeminiLogOpen, setIsGeminiLogOpen] = useState<boolean>(false);
 
   // Autonomous DF-AI / Gemini Overseer State
   const [aiState, setAiState] = useState<DfAiState>(INITIAL_DF_AI_STATE);
@@ -79,7 +87,9 @@ export default function App() {
 
   // View & Tool States
   const [currentZ, setCurrentZ] = useState<number>(() => fortressState.surfaceZ);
-  const [renderMode, setRenderMode] = useState<'ascii' | 'graphic'>('graphic');
+  const [renderMode, setRenderMode] = useState<'ascii' | 'graphic' | 'isometric'>('isometric');
+  const [hasSavedGame, setHasSavedGame] = useState<boolean>(() => Boolean(getSavedFortressMetadata()));
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const [revealAll, setRevealAll] = useState<boolean>(false);
   const [selectedTool, setSelectedTool] = useState<string>('inspect');
   const [selectedDwarf, setSelectedDwarf] = useState<DwarfEntity | null>(null);
@@ -274,6 +284,21 @@ export default function App() {
             type: 'info',
             terminalCommand: 'df-ai status',
             text: `[df-ai:status] Model: ${prev.aiModel} | Status: ${prev.statusSummary} | Directive: "${prev.directive}" | Active: ${prev.isActive} | Cycles: ${prev.totalCyclesExecuted}`,
+          },
+        ],
+      }));
+    } else if (cleanCmd === 'gemini-log' || cleanCmd === 'ai-log' || cleanCmd === 'log' || cleanCmd === 'journal') {
+      setIsGeminiLogOpen(true);
+      setAiState(prev => ({
+        ...prev,
+        terminalLogs: [
+          ...prev.terminalLogs,
+          {
+            id: `cmd_${Date.now()}`,
+            timestamp: timeStr,
+            type: 'gemini',
+            terminalCommand: cleanCmd,
+            text: `[df-ai:gemini] Opened Gemini 3.8 Action & Governance Journal (${prev.actionHistory?.length || 0} total cycles recorded).`,
           },
         ],
       }));
@@ -711,8 +736,68 @@ export default function App() {
     });
   };
 
+  // Cycle render mode between Variant A (2D Graphic), Variant C (3D Isometric Stonesense), and ASCII
+  const handleToggleRenderMode = () => {
+    setRenderMode(prev => {
+      if (prev === 'isometric') return 'graphic';
+      if (prev === 'graphic') return 'ascii';
+      return 'isometric';
+    });
+  };
+
+  // Royal Archive Save Fortress
+  const handleSaveFortress = () => {
+    const success = saveFortressToStorage(fortressState);
+    if (success) {
+      setHasSavedGame(true);
+      setSaveToast(lang === 'ua' ? '🏰 Фортецю збережено в Королівський Архів!' : '🏰 Fortress saved to Royal Archive!');
+      setTimeout(() => setSaveToast(null), 3500);
+      addEvent({
+        tick: fortressState.tick,
+        timeStr: `Year ${fortressState.year}, ${fortressState.season} ${fortressState.day}`,
+        textEn: `The Fortress chronicler records the Royal Archive state. Progress secured.`,
+        textUa: `Літописець зафіксував стан фортеці в Королівському Архіві. Прогрес збережено.`,
+        type: 'announcement'
+      });
+    }
+  };
+
+  // Restore Fortress from Archive
+  const handleLoadFortress = () => {
+    const loaded = loadFortressFromStorage();
+    if (loaded) {
+      setFortressState(loaded);
+      setCurrentZ(loaded.surfaceZ ?? 5);
+      setSelectedDwarf(null);
+      setSelectedTile(null);
+      setSaveToast(lang === 'ua' ? '📜 Фортецю відновлено з Архіву!' : '📜 Fortress loaded from Archive!');
+      setTimeout(() => setSaveToast(null), 3500);
+      addEvent({
+        tick: loaded.tick,
+        timeStr: `Year ${loaded.year}, ${loaded.season} ${loaded.day}`,
+        textEn: `Fortress state loaded successfully from the royal parchment scrolls.`,
+        textUa: `Стан фортеці успішно відновлено з королівських пергаментів.`,
+        type: 'discovery'
+      });
+    }
+  };
+
+  // Export JSON Save File
+  const handleExportFortress = () => {
+    exportFortressToJsonFile(fortressState);
+    setSaveToast(lang === 'ua' ? '💾 Файл збереження .json завантажено!' : '💾 Fortress .json save file exported!');
+    setTimeout(() => setSaveToast(null), 3500);
+  };
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0e0d0c] text-stone-100 overflow-hidden font-mono select-none">
+    <div className="flex flex-col h-screen w-screen bg-[#0e0d0c] text-stone-100 overflow-hidden font-mono select-none relative">
+      {/* Save / Load Status Toast */}
+      {saveToast && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-[#1e1710] border border-[#d4af37] text-[#fef08a] px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+          <span>{saveToast}</span>
+        </div>
+      )}
+
       {/* Top Dwarf Fortress Steam Header */}
       <FortressHeader
         state={fortressState}
@@ -724,11 +809,15 @@ export default function App() {
         activeTab={activeTab}
         revealAll={revealAll}
         lang={lang}
+        hasSavedGame={hasSavedGame}
+        onSaveFortress={handleSaveFortress}
+        onLoadFortress={handleLoadFortress}
+        onExportFortress={handleExportFortress}
         onTogglePlay={() => setIsRunning(r => !r)}
         onStepTick={() => tickRef.current()}
         onChangeSpeed={s => setSpeed(s)}
         onChangeZ={delta => setCurrentZ(z => Math.max(0, Math.min(fortressState.depthZ - 1, z + delta)))}
-        onToggleRenderMode={() => setRenderMode(m => (m === 'ascii' ? 'graphic' : 'ascii'))}
+        onToggleRenderMode={handleToggleRenderMode}
         onToggleRevealAll={() => setRevealAll(r => !r)}
         onSwitchTab={tab => setActiveTab(tab)}
         onToggleLang={() => setLang(l => (l === 'ua' ? 'en' : 'ua'))}
@@ -757,6 +846,7 @@ export default function App() {
           handleRunDfAiStep(dir);
         }}
         onOpenTerminal={() => setIsDfHackOpen(true)}
+        onOpenGeminiLog={() => setIsGeminiLogOpen(true)}
         lang={lang}
       />
 
@@ -886,8 +976,17 @@ export default function App() {
         }}
         onRunStep={() => handleRunDfAiStep()}
         onSendCommand={handleSendDfHackCommand}
+        onOpenGeminiLog={() => setIsGeminiLogOpen(true)}
         revealAll={revealAll}
         onToggleRevealAll={() => setRevealAll(r => !r)}
+        lang={lang}
+      />
+
+      <GeminiLogModal
+        isOpen={isGeminiLogOpen}
+        onClose={() => setIsGeminiLogOpen(false)}
+        actionHistory={aiState.actionHistory || []}
+        aiModel={aiState.aiModel}
         lang={lang}
       />
 

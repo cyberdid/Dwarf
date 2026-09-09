@@ -2,24 +2,88 @@
 
 @layer base {
   body {
-    background-color: #0b0a09;
-    color: #e5e5e5;
+    background-color: #1a1208;
+    color: #f2e8d5;
     font-family: 'Fira Code', monospace;
     user-select: none;
     -webkit-user-select: none;
   }
 }
 
-/* Custom Authentic Dwarf Fortress UI Styles */
+/* Typography Classes */
 .font-cinzel {
-  font-family: 'Cinzel', serif;
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.font-garamond {
+  font-family: 'EB Garamond', Georgia, serif;
 }
 
 .font-medieval {
   font-family: 'MedievalSharp', cursive, serif;
 }
 
-/* Authentic DF Gold Inset Border */
+/* Pilgrimage Medieval Framing and Aesthetic Tokens */
+:root {
+  --pilgrimage-wood: #1a1208;
+  --pilgrimage-panel: #211e16;
+  --pilgrimage-parchment: #29241b;
+  --pilgrimage-frame: #463d2d;
+  --pilgrimage-gold: #d4b57a;
+  --pilgrimage-gold-border: #b19a60;
+  --pilgrimage-ink: #f2e8d5;
+  --pilgrimage-ink-muted: #c7b897;
+  --pilgrimage-rule: #8c784c;
+}
+
+/* Iconic Pilgrimage double-bevel gold frame */
+.pilgrimage-frame {
+  border: 4px solid #463d2d;
+  box-shadow: 
+    inset 0 0 0 1px #b19a60,
+    0 0 0 1px #b19a60,
+    0 4px 20px rgba(0, 0, 0, 0.75);
+}
+
+.pilgrimage-panel {
+  background-color: #211e16;
+  border: 1px solid #8c784c;
+  box-shadow: 
+    inset 0 0 0 2px #17140e,
+    0 3px 12px rgba(0, 0, 0, 0.6);
+}
+
+.pilgrimage-action {
+  background: linear-gradient(180deg, #30291c 0%, #221c13 100%);
+  border: 1px solid #726242;
+  color: #f2e8d5;
+  box-shadow: 
+    inset 0 1px 0 rgba(225, 198, 137, 0.25),
+    0 2px 4px rgba(0, 0, 0, 0.45);
+  transition: all 0.15s ease-in-out;
+}
+
+.pilgrimage-action:hover {
+  background: linear-gradient(180deg, #423725 0%, #2f2518 100%);
+  border-color: #bea067;
+  color: #fef0c7;
+  box-shadow: 
+    inset 0 1px 0 rgba(254, 240, 199, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.pilgrimage-action:active,
+.pilgrimage-action.active,
+.pilgrimage-action[aria-pressed="true"] {
+  background: linear-gradient(180deg, #1e1810 0%, #3a2e1d 100%);
+  border-color: #d4b57a;
+  color: #fef0c7;
+  box-shadow: 
+    inset 0 2px 5px rgba(0, 0, 0, 0.8),
+    0 0 6px rgba(212, 181, 122, 0.3);
+}
+
+/* Authentic DF Gold Inset Border (backwards compatibility) */
 .df-gold-frame {
   border: 2px solid #5a4522;
   box-shadow: 
@@ -30,7 +94,7 @@
 }
 
 .df-gold-border {
-  border-color: #785b28;
+  border-color: #8c784c;
 }
 
 .df-inner-bevel {
@@ -59,21 +123,21 @@
     0 0 4px rgba(212, 163, 75, 0.3);
 }
 
-/* Custom DF Scrollbars */
+/* Custom DF & Medieval Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #121110;
-  border-left: 1px solid #28241f;
+  background: #140f09;
+  border-left: 1px solid #282015;
 }
 ::-webkit-scrollbar-thumb {
-  background: #453723;
+  background: #463d2d;
   border-radius: 2px;
-  border: 1px solid #735932;
+  border: 1px solid #8c784c;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #735932;
+  background: #726242;
 }
 

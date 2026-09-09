@@ -81,8 +81,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
     <div className="absolute bottom-2 left-0 right-0 pointer-events-none flex flex-col items-center z-30 select-none font-mono">
       {/* Expandable Submenu Flyout */}
       {activeSubmenu && (
-        <div className="pointer-events-auto mb-2 df-gold-frame rounded-lg p-2 shadow-2xl flex items-center gap-1.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <span className="text-[10px] text-amber-400 font-cinzel font-bold px-2 uppercase">
+        <div className="pointer-events-auto mb-2 pilgrimage-panel pilgrimage-frame rounded-lg p-2 shadow-2xl flex items-center gap-1.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <span className="text-[11px] text-[#f5d576] font-cinzel font-bold px-2 uppercase tracking-wider">
             {activeSubmenu === 'build' ? (lang === 'ua' ? 'Будівництво:' : 'Structures:') :
              activeSubmenu === 'workshops' ? (lang === 'ua' ? 'Майстерні:' : 'Workshops:') :
              (lang === 'ua' ? 'Склади:' : 'Stockpiles:')}
@@ -99,8 +99,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
                 }}
                 className={`px-3 py-1.5 rounded flex items-center gap-2 text-xs transition-all ${
                   isSelected
-                    ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                    : 'df-btn-bevel text-stone-200 hover:text-amber-300'
+                    ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                    : 'pilgrimage-action text-[#f2e8d5] hover:text-[#fef0c7]'
                 }`}
                 title={`${lang === 'ua' ? item.labelUa : item.labelEn} [${item.hotkey}]`}
               >
@@ -115,14 +115,14 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
       {/* Primary Centered Dock */}
       <div className="pointer-events-auto flex items-center gap-3">
         {/* Main Dock Tray */}
-        <div className="df-gold-frame rounded-lg p-1.5 flex items-center gap-1.5 shadow-2xl">
+        <div className="pilagrim-dock pilgrimage-panel pilgrimage-frame rounded-lg p-1.5 flex items-center gap-1.5 shadow-2xl">
           {/* Inspect Tool */}
           <button
             onClick={() => handleToolClick('inspect')}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               selectedTool === 'inspect'
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Inspect Dwarf or Tile [q]"
           >
@@ -135,8 +135,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('mine')}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               selectedTool === 'mine'
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Mine Rock & Ores [d]"
           >
@@ -149,8 +149,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('chop')}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               selectedTool === 'chop'
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Chop Trees for Lumber [t]"
           >
@@ -163,8 +163,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('gather')}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               selectedTool === 'gather'
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Gather Surface Plants & Berries [g]"
           >
@@ -177,8 +177,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('stockpiles', true)}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               activeSubmenu === 'stockpiles' || selectedTool.startsWith('stockpile_')
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Designate Stockpiles [p]"
           >
@@ -191,8 +191,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('cancel')}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               selectedTool === 'cancel'
-                ? 'bg-rose-700 text-stone-100 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-rose-400'
+                ? 'bg-gradient-to-b from-rose-800 to-rose-950 text-[#fef0c7] font-bold border border-rose-500 shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-rose-300'
             }`}
             title="Erase / Cancel Designation [c]"
           >
@@ -200,15 +200,15 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             <span className="text-[9px] font-cinzel leading-none">{lang === 'ua' ? 'Стерти' : 'Cancel'}</span>
           </button>
 
-          <div className="h-8 w-px bg-[#5a4522] mx-1" />
+          <div className="h-8 w-px bg-[#726242] mx-1" />
 
           {/* Build Structures Menu */}
           <button
             onClick={() => handleToolClick('build', true)}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               activeSubmenu === 'build' || selectedTool.startsWith('build_')
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Construct Walls, Doors & Furniture [b]"
           >
@@ -221,8 +221,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('workshops', true)}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               activeSubmenu === 'workshops' || selectedTool.includes('workshop')
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Construct Workshops [w]"
           >
@@ -233,7 +233,7 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
           {/* Citizens & Units */}
           <button
             onClick={() => onOpenUnitsRoster && onOpenUnitsRoster()}
-            className="p-2 rounded-md flex flex-col items-center gap-0.5 text-xs df-btn-bevel text-stone-300 hover:text-amber-300 transition-all"
+            className="p-2 rounded-md flex flex-col items-center gap-0.5 text-xs pilgrimage-action text-[#c7b897] hover:text-[#fef0c7] transition-all"
             title="Citizens & Labor Management [u]"
           >
             <Users className="w-5 h-5 text-amber-400" />
@@ -245,8 +245,8 @@ export const FortressToolBar: React.FC<FortressToolBarProps> = ({
             onClick={() => handleToolClick('zones')}
             className={`p-2 rounded-md flex flex-col items-center gap-0.5 text-xs transition-all ${
               selectedTool === 'zones'
-                ? 'bg-amber-600 text-stone-950 font-bold shadow'
-                : 'df-btn-bevel text-stone-300 hover:text-amber-300'
+                ? 'bg-gradient-to-b from-[#8c784c] to-[#594b31] text-[#fef0c7] font-bold border border-[#bea067] shadow'
+                : 'pilgrimage-action text-[#c7b897] hover:text-[#fef0c7]'
             }`}
             title="Designate Zones & Bedrooms [z]"
           >
