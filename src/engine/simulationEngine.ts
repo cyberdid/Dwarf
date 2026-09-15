@@ -6,6 +6,7 @@
 import { FortressState, DwarfEntity, Tile, FortressEvent, WorldItem, DwarfThought, DwarfMood } from '../types/simulation';
 import { findPath3D } from './pathfinding';
 import { buildTaskIndex, updateTileInTaskIndex } from './taskIndex';
+import { cloneTilesSpine, getWritableTile } from './tileWriter';
 
 export function runSimulationTick(
   state: FortressState,
@@ -17,9 +18,10 @@ export function runSimulationTick(
   const sizeY = state.sizeY;
   const depthZ = state.depthZ;
 
-  // Clone tiles reference so we can mutate safely in the tick
-  const tiles = state.tiles;
-  let items = [...state.items];
+  // Copy-on-write: fresh spine (layer/row arrays), tile objects cloned only on write.
+  const baseTiles = state.tiles;
+  const tiles = cloneTilesSpine(baseTiles);
+  let items = state.items.map(it => ({ ...it }));
   let dwarves = [...state.dwarves];
   let creatures = [...state.creatures];
   let wealth = state.wealth;
@@ -208,6 +210,15 @@ export function runSimulationTick(
         social,
         work: workNeed
       },
+      skills: {
+        mining: { ...dwarf.skills.mining },
+        woodcutting: { ...dwarf.skills.woodcutting },
+        carpentry: { ...dwarf.skills.carpentry },
+        masonry: { ...dwarf.skills.masonry },
+        brewing: { ...dwarf.skills.brewing },
+        hauling: { ...dwarf.skills.hauling },
+      },
+      thoughts: dwarf.thoughts.slice(),
       mood,
       happinessScore: Math.round(avgNeeds)
     };
@@ -508,7 +519,8 @@ export function runSimulationTick(
     }
 
     // 3. Task Execution (if dwarf already has a task)
-    const task = updatedDwarf.currentTask;
+    const task = { ...updatedDwarf.currentTask };
+    updatedDwarf.currentTask = task;
 
     // Item-targeted task validation (drinking, eating, hauling)
     // If the targeted item was consumed or picked up by another dwarf, cancel task immediately
@@ -538,7 +550,7 @@ export function runSimulationTick(
     if (task.progress >= task.maxProgress) {
       // Task Complete!
       if (task.type === 'mining') {
-        const targetTile = tiles[task.targetZ]?.[task.targetY]?.[task.targetX];
+        const targetTile = getWritableTile(tiles, baseTiles, task.targetZ, task.targetY, task.targetX);
         if (targetTile) {
           const previousMaterial = targetTile.material;
           // Clear rock tile into excavated floor
@@ -559,9 +571,8 @@ export function runSimulationTick(
                 const rx = task.targetX + dx;
                 const ry = task.targetY + dy;
                 const rz = task.targetZ + dz;
-                if (tiles[rz]?.[ry]?.[rx]) {
-                  tiles[rz][ry][rx].isRevealed = true;
-                }
+                const rt = getWritableTile(tiles, baseTiles, rz, ry, rx);
+                if (rt) rt.isRevealed = true;
               }
             }
           }
@@ -633,7 +644,7 @@ export function runSimulationTick(
           if (updatedDwarf.thoughts.length > 8) updatedDwarf.thoughts.pop();
         }
       } else if (task.type === 'chopping') {
-        const targetTile = tiles[task.targetZ]?.[task.targetY]?.[task.targetX];
+        const targetTile = getWritableTile(tiles, baseTiles, task.targetZ, task.targetY, task.targetX);
         if (targetTile) {
           const previousMaterial = targetTile.material;
           targetTile.material = 'grass';
@@ -642,8 +653,9 @@ export function runSimulationTick(
           updateTileInTaskIndex(taskIndex, task.targetX, task.targetY, task.targetZ, { designation: 'chop', stockpile: targetTile.stockpile, material: previousMaterial }, targetTile);
 
           // Clear foliage above if present
-          if (task.targetZ + 1 < depthZ && tiles[task.targetZ + 1][task.targetY][task.targetX].material === 'tree_foliage') {
-            tiles[task.targetZ + 1][task.targetY][task.targetX].material = 'air';
+          if (task.targetZ + 1 < depthZ) {
+            const foliage = getWritableTile(tiles, baseTiles, task.targetZ + 1, task.targetY, task.targetX);
+            if (foliage && foliage.material === 'tree_foliage') foliage.material = 'air';
           }
 
           // Spawn wood logs
@@ -662,7 +674,7 @@ export function runSimulationTick(
           updatedDwarf.needs.work = Math.min(100, updatedDwarf.needs.work + 20);
         }
       } else if (task.type === 'building') {
-        const targetTile = tiles[task.targetZ]?.[task.targetY]?.[task.targetX];
+        const targetTile = getWritableTile(tiles, baseTiles, task.targetZ, task.targetY, task.targetX);
         if (targetTile) {
           const designation = targetTile.designation;
           const previousMaterial = targetTile.material;
@@ -816,7 +828,8 @@ export function runSimulationTick(
           if (dx * dx + dy * dy + dz * dz <= DWARF_VISION_RADIUS * DWARF_VISION_RADIUS) {
             const t = tiles[z]?.[y]?.[x];
             if (t && !t.isRevealed) {
-              t.isRevealed = true;
+              const wt = getWritableTile(tiles, baseTiles, z, y, x)!;
+              wt.isRevealed = true;
             }
           }
         }
@@ -831,6 +844,7 @@ export function runSimulationTick(
     season: currentSeason,
     year: currentYear,
     wealth,
+    tiles,
     dwarves,
     creatures,
     items,
