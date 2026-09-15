@@ -63,4 +63,15 @@ describe('runSimulationTick purity', () => {
     expect(next.tick).toBe(1);
     expect(state.tick).toBe(0);
   });
+
+  it('propagates tile writes to the returned state without mutating the input', () => {
+    const state = makeMinimalState();
+    const next = runSimulationTick(state, [], () => {});
+    // Fog-of-war reveals radius 4 around the dwarf (at 1,1,1), so its own tile flips.
+    expect(next.tiles[1][1][1].isRevealed).toBe(true);
+    // The input state must remain untouched.
+    expect(state.tiles[1][1][1].isRevealed).toBe(false);
+    // Copy-on-write must produce a new tiles structure, not the same reference.
+    expect(next.tiles).not.toBe(state.tiles);
+  });
 });
