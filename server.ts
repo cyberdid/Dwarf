@@ -500,6 +500,22 @@ Decide the best tactical and architectural commands right now!`;
   }
 });
 
+// Read Gemini decision logs for the in-app analytics panel and CLI parity.
+app.get("/api/df-ai/logs", rateLimitMiddleware(), (req, res) => {
+  const dateParam = typeof req.query.date === "string" ? req.query.date : undefined;
+  if (dateParam && !isValidLogDate(dateParam)) {
+    return res.status(400).json({ error: "Invalid date; expected YYYY-MM-DD" });
+  }
+  const limit = Math.min(1000, Math.max(1, parseInt(String(req.query.limit ?? "200"), 10) || 200));
+  const all = readGeminiLogEntries({ date: dateParam });
+  const aggregates = computeGeminiLogAggregates(all);
+  return res.json({
+    date: dateParam ?? new Date().toISOString().slice(0, 10),
+    entries: all.slice(-limit).reverse(),
+    aggregates,
+  });
+});
+
 // Vite Middleware Integration
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
