@@ -32,6 +32,7 @@ import { HelpModal } from './components/HelpModal';
 import { OverworldView } from './components/OverworldView';
 import { DfAiToolbar } from './components/DfAiToolbar';
 import { DfHackConsoleModal } from './components/DfHackConsoleModal';
+import { AiAnalyticsModal } from './components/AiAnalyticsModal';
 import { DfAiState, INITIAL_DF_AI_STATE, executeDfAiStep } from './engine/dfAiClient';
 import { canPlaceBuilding } from './engine/buildingRules';
 import { buildTaskIndex, updateTileInTaskIndex } from './engine/taskIndex';
@@ -47,6 +48,7 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isOverworldOpen, setIsOverworldOpen] = useState<boolean>(false);
   const [isDfHackOpen, setIsDfHackOpen] = useState<boolean>(false);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState<boolean>(false);
 
   // Autonomous DF-AI / Gemini Overseer State
   const [aiState, setAiState] = useState<DfAiState>(INITIAL_DF_AI_STATE);
@@ -757,6 +759,7 @@ export default function App() {
           handleRunDfAiStep(dir);
         }}
         onOpenTerminal={() => setIsDfHackOpen(true)}
+        onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         lang={lang}
       />
 
@@ -888,6 +891,12 @@ export default function App() {
         onSendCommand={handleSendDfHackCommand}
         revealAll={revealAll}
         onToggleRevealAll={() => setRevealAll(r => !r)}
+        lang={lang}
+      />
+
+      <AiAnalyticsModal
+        isOpen={isAnalyticsOpen}
+        onClose={() => setIsAnalyticsOpen(false)}
         lang={lang}
       />
 

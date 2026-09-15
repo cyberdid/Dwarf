@@ -12,6 +12,7 @@ import {
   Beer,
   Pickaxe,
   ShieldAlert,
+  BarChart3,
 } from 'lucide-react';
 import { DfAiState } from '../engine/dfAiClient';
 
@@ -21,6 +22,7 @@ interface DfAiToolbarProps {
   onRunStep: () => void;
   onChangeDirective: (directive: string) => void;
   onOpenTerminal: () => void;
+  onOpenAnalytics: () => void;
   lang: 'ua' | 'en';
 }
 
@@ -61,6 +63,7 @@ export const DfAiToolbar: React.FC<DfAiToolbarProps> = ({
   onRunStep,
   onChangeDirective,
   onOpenTerminal,
+  onOpenAnalytics,
   lang,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -207,6 +210,16 @@ export const DfAiToolbar: React.FC<DfAiToolbarProps> = ({
             </div>
           )}
         </div>
+
+        <button
+          id="btn-open-ai-analytics"
+          onClick={onOpenAnalytics}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs bg-stone-950 hover:bg-stone-900 border border-amber-700/60 text-amber-300 font-mono transition-colors shadow-sm"
+          title={lang === 'ua' ? 'Аналітика рішень Gemini (логи)' : 'Gemini decision analytics (logs)'}
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+          <span>{lang === 'ua' ? 'Аналітика' : 'Analytics'}</span>
+        </button>
 
         {/* DFHack Console Open Button */}
         <button
