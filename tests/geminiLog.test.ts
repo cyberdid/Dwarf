@@ -49,6 +49,19 @@ describe('append + read round-trip', () => {
     fs.appendFileSync(path.join(dir, `gemini-${date}.jsonl`), 'not-json\n');
     expect(readGeminiLogEntries({ date, baseDir: dir }).length).toBe(1);
   });
+
+  it('handles unserializable records (circular refs) via fallback', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemlog-'));
+    const circular: any = {};
+    circular.self = circular;
+    const rec = buildGeminiLogRecord({
+      cycleId: 'circ', source: 'heuristic', model: 'm', latencyMs: 1, ok: true, parsed: circular,
+    });
+    expect(() => appendGeminiLog(rec, dir)).not.toThrow();
+    const back = readGeminiLogEntries({ date: rec.ts.slice(0, 10), baseDir: dir });
+    expect(back.length).toBe(1);
+    expect((back[0] as any).error).toBe('unserializable-record');
+  });
 });
 
 describe('computeGeminiLogAggregates', () => {
