@@ -53,7 +53,7 @@ export const INITIAL_DF_AI_STATE: DfAiState = {
   thoughtProcessEn: 'df-ai overseer initialized. Ready to autonomously strike the earth and command dwarves.',
   thoughtProcessUa: 'Автономний наглядач df-ai готовий до роботи. Очікує команди «Увімкнути Автопілот» або «Крок AI».',
   statusSummary: 'STANDBY',
-  aiModel: 'gemini-3.8-flash',
+  aiModel: 'gemini-2.5-flash',
   totalCyclesExecuted: 0,
   terminalLogs: [
     {
@@ -444,7 +444,7 @@ export async function executeDfAiStep(
     thoughtProcessEn: responseData.thoughtProcessEn || aiState.thoughtProcessEn,
     thoughtProcessUa: responseData.thoughtProcessUa || aiState.thoughtProcessUa,
     statusSummary: responseData.statusSummary || 'AUTONOMOUS_OPERATING',
-    aiModel: responseData.source || 'gemini-3.8-flash',
+    aiModel: responseData.source || 'gemini-2.5-flash',
     totalCyclesExecuted: aiState.totalCyclesExecuted + 1,
     terminalLogs: updatedTerminalLogs,
     highlightedTiles: newHighlights,

@@ -287,7 +287,7 @@ Given the current fortress state, formulate an immediate, actionable step plan. 
 Decide the best tactical and architectural commands right now!`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",
@@ -428,7 +428,7 @@ Decide the best tactical and architectural commands right now!`;
 
     const parsed = JSON.parse(response.text || "{}");
     return res.json({
-      source: "gemini-3.8-flash",
+      source: "gemini",
       ...parsed,
     });
   } catch (err: any) {
