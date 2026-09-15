@@ -3,6 +3,13 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import {
+  buildGeminiLogRecord,
+  appendGeminiLog,
+  readGeminiLogEntries,
+  computeGeminiLogAggregates,
+  isValidLogDate,
+} from "./geminiLog";
 
 dotenv.config();
 
@@ -244,20 +251,34 @@ function generateHeuristicDfAiPlan(body: any) {
  * Autonomous Gemini DF-AI Overseer Endpoint
  * Analyzes Dwarf Fortress memory & simulation state and issues DFHack commands
  */
-app.post("/api/df-ai/step", async (req, res) => {
-  const body = req.body;
+app.post("/api/df-ai/step", rateLimitMiddleware(), async (req, res) => {
+  const body = req.body || {};
   const ai = getGeminiClient();
+  const cycleId = `cyc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const start = Date.now();
+  const { fortressSummary, overworldSummary, directive, historyLogs } = body;
 
   if (!ai) {
     // If no API key configured, use the built-in Ben Lubar df-ai rule engine
     const heuristicPlan = generateHeuristicDfAiPlan(body);
-    return res.json(heuristicPlan);
+    appendGeminiLog(buildGeminiLogRecord({
+      cycleId,
+      source: "heuristic",
+      model: GEMINI_MODEL,
+      latencyMs: Date.now() - start,
+      ok: true,
+      directive,
+      fortressSummary,
+      overworldSummary,
+      prompt: null,
+      responseRaw: null,
+      usage: null,
+      parsed: heuristicPlan,
+    }));
+    return res.json({ cycleId, ...heuristicPlan });
   }
 
-  try {
-    const { fortressSummary, overworldSummary, directive, historyLogs } = body;
-
-    const systemPrompt = `You are the autonomous AI Overseer for a Dwarf Fortress game, modeled directly after Ben Lubar's legendary 'df-ai' (DFHack autonomous player plugin).
+  const systemPrompt = `You are the autonomous AI Overseer for a Dwarf Fortress game, modeled directly after Ben Lubar's legendary 'df-ai' (DFHack autonomous player plugin).
 You have full authority to command the dwarves, plan architectural blueprints, excavate tunnels, fell trees, build workshops, erect bedrooms, assign stockpiles, order brewing, and dispatch world expeditions.
 
 Your primary directive is FORTRESS SURVIVAL AND GLORY:
@@ -269,7 +290,7 @@ Your primary directive is FORTRESS SURVIVAL AND GLORY:
 
 Given the current fortress state, formulate an immediate, actionable step plan. Return ONLY valid JSON adhering strictly to the schema.`;
 
-    const userPrompt = `CURRENT FORTRESS SNAPSHOT:
+  const userPrompt = `CURRENT FORTRESS SNAPSHOT:
 - Calendar: Year ${fortressSummary?.year || 105}, ${fortressSummary?.season || "Spring"} ${fortressSummary?.day || 1} (Tick ${fortressSummary?.tick || 0})
 - Population: ${fortressSummary?.population || 7} dwarves (${fortressSummary?.idleDwarvesCount || 0} idle)
 - Wealth: ${fortressSummary?.wealth || 0}
@@ -286,6 +307,7 @@ Given the current fortress state, formulate an immediate, actionable step plan. 
 
 Decide the best tactical and architectural commands right now!`;
 
+  try {
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: [
@@ -427,14 +449,50 @@ Decide the best tactical and architectural commands right now!`;
     });
 
     const parsed = JSON.parse(response.text || "{}");
+    const usageMeta = (response as any).usageMetadata;
+    appendGeminiLog(buildGeminiLogRecord({
+      cycleId,
+      source: "gemini",
+      model: GEMINI_MODEL,
+      latencyMs: Date.now() - start,
+      ok: true,
+      directive,
+      fortressSummary,
+      overworldSummary,
+      prompt: { system: systemPrompt, user: userPrompt },
+      responseRaw: response.text ?? null,
+      usage: usageMeta ? {
+        promptTokens: usageMeta.promptTokenCount ?? 0,
+        candidatesTokens: usageMeta.candidatesTokenCount ?? 0,
+        totalTokens: usageMeta.totalTokenCount ?? 0,
+      } : null,
+      parsed,
+    }));
     return res.json({
+      cycleId,
       source: "gemini",
       ...parsed,
     });
   } catch (err: any) {
-    console.error("Gemini DF-AI step failed, using heuristic fallback:", err?.message);
     const fallbackPlan = generateHeuristicDfAiPlan(body);
+    appendGeminiLog(buildGeminiLogRecord({
+      cycleId,
+      source: "gemini-fallback",
+      model: GEMINI_MODEL,
+      latencyMs: Date.now() - start,
+      ok: false,
+      error: err?.message,
+      directive,
+      fortressSummary,
+      overworldSummary,
+      prompt: { system: systemPrompt, user: userPrompt },
+      responseRaw: null,
+      usage: null,
+      parsed: fallbackPlan,
+    }));
+    console.error("Gemini DF-AI step failed, using heuristic fallback:", err?.message);
     return res.json({
+      cycleId,
       ...fallbackPlan,
       source: "df-ai-heuristic-fallback",
       error: err?.message,
