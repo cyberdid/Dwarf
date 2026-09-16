@@ -18,4 +18,23 @@ describe('Gemini model id is single-sourced and valid', () => {
   it('client no longer hardcodes the invalid model label', () => {
     expect(read('src/engine/dfAiClient.ts')).not.toContain('gemini-3.8-flash');
   });
+
+  it('no .ts/.tsx file under src/ contains a stale "Gemini 3.8" reference in any casing or separator', () => {
+    const staleModelPattern = /gemini[\s-]?3\.8/i;
+    const srcRoot = path.join(process.cwd(), 'src');
+
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) return walk(fullPath);
+        if (/\.(ts|tsx)$/.test(entry.name)) return [fullPath];
+        return [];
+      });
+
+    const offenders = walk(srcRoot).filter(file =>
+      staleModelPattern.test(fs.readFileSync(file, 'utf8'))
+    );
+
+    expect(offenders).toEqual([]);
+  });
 });

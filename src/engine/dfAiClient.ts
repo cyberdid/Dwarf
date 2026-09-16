@@ -67,7 +67,7 @@ export const INITIAL_DF_AI_STATE: DfAiState = {
       id: 'log_init_2',
       timestamp: '00:00',
       type: 'gemini',
-      text: '[df-ai:gemini] Autonomous LLM module connected to Google Gemini 3.8 Flash',
+      text: '[df-ai:gemini] Autonomous LLM module connected to Google Gemini 2.5 Flash',
     },
   ],
   highlightedTiles: [],
