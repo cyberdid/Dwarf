@@ -8,7 +8,7 @@ import {
 } from '../geminiLog';
 
 const base = (over: any = {}) => buildGeminiLogRecord({
-  cycleId: 'c', source: 'heuristic', model: 'gemini-2.5-flash',
+  cycleId: 'c', source: 'heuristic', model: 'gemini-3.8-flash',
   latencyMs: 10, ok: true, directive: 'grow',
   parsed: { statusSummary: 'S', commands: {} }, ...over,
 });
@@ -16,7 +16,7 @@ const base = (over: any = {}) => buildGeminiLogRecord({
 describe('buildGeminiLogRecord', () => {
   it('counts commands, extracts status, rounds latency', () => {
     const rec = buildGeminiLogRecord({
-      cycleId: 'c1', source: 'heuristic', model: 'gemini-2.5-flash',
+      cycleId: 'c1', source: 'heuristic', model: 'gemini-3.8-flash',
       latencyMs: 12.6, ok: true, directive: 'test',
       parsed: {
         statusSummary: 'BOOZE_EMERGENCY',

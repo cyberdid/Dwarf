@@ -14,7 +14,7 @@ import {
 dotenv.config();
 
 // Primary Fast Gemini Model Identifier for Low-Latency Autonomous DF-AI
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.8-flash";
 
 const app = express();
 const PORT = 3000;

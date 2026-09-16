@@ -65,7 +65,7 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
             <Terminal className="w-4 h-4 text-emerald-400 animate-pulse" />
             <span>DFHack v50.15-r4 Console</span>
             <span className="text-stone-500">|</span>
-            <span className="text-amber-400">Plugin: df-ai (Ben Lubar & Gemini 2.5 Flash)</span>
+            <span className="text-amber-400">Plugin: df-ai (Ben Lubar & Gemini 3.8 Flash)</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -165,7 +165,7 @@ export const DfHackConsoleModal: React.FC<DfHackConsoleModalProps> = ({
 
           {aiState.isThinking && (
             <div className="text-amber-400 flex items-center gap-2 animate-pulse mt-2">
-              <span>[df-ai:gemini] Communicating with Gemini 2.5 Flash Overseer...</span>
+              <span>[df-ai:gemini] Communicating with Gemini 3.8 Flash Overseer...</span>
             </div>
           )}
 

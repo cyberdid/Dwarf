@@ -741,7 +741,7 @@ export default function App() {
         onOpenHelp={() => setIsHelpOpen(true)}
       />
 
-      {/* DF-AI Autonomous Overseer Bar (Ben Lubar & Gemini 2.5 Flash) */}
+      {/* DF-AI Autonomous Overseer Bar (Ben Lubar & Gemini 3.8 Flash) */}
       <DfAiToolbar
         aiState={aiState}
         onToggleActive={() => {
