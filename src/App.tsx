@@ -43,6 +43,73 @@ import {
   exportFortressToJsonFile,
 } from './engine/saveSystem';
 
+export type HotkeyCommand =
+  | 'toggle_dfhack'
+  | 'toggle_running'
+  | 'step_tick'
+  | 'descend_z'
+  | 'ascend_z'
+  | 'tool_mine'
+  | 'tool_chop'
+  | 'tool_gather'
+  | 'tool_stockpiles'
+  | 'tool_build'
+  | 'tool_workshops'
+  | 'tool_inspect'
+  | 'tool_cancel'
+  | 'open_units'
+  | 'toggle_overworld'
+  | 'open_help'
+  | null;
+
+export interface HotkeyEventLike {
+  key: string;
+  code?: string;
+  shiftKey?: boolean;
+  target?: any;
+}
+
+export function getHotkeyAction(e: HotkeyEventLike): HotkeyCommand {
+  if (typeof HTMLInputElement !== 'undefined' && e.target instanceof HTMLInputElement) return null;
+  if (typeof HTMLTextAreaElement !== 'undefined' && e.target instanceof HTMLTextAreaElement) return null;
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return null;
+
+  if (e.key === '`' || e.key === '~') {
+    return 'toggle_dfhack';
+  } else if (e.code === 'Space') {
+    return 'toggle_running';
+  } else if (e.key === '<' || e.key === '[' || e.code === 'BracketLeft') {
+    return 'descend_z';
+  } else if (e.key === '>' || e.key === ']' || e.code === 'BracketRight') {
+    return 'ascend_z';
+  } else if (!e.shiftKey && (e.key === '.' || e.code === 'Period')) {
+    return 'step_tick';
+  } else if (e.key === 'd') {
+    return 'tool_mine';
+  } else if (e.key === 't') {
+    return 'tool_chop';
+  } else if (e.key === 'g') {
+    return 'tool_gather';
+  } else if (e.key === 'p') {
+    return 'tool_stockpiles';
+  } else if (e.key === 'b') {
+    return 'tool_build';
+  } else if (e.key === 'w') {
+    return 'tool_workshops';
+  } else if (e.key === 'u') {
+    return 'open_units';
+  } else if (e.key === 'q') {
+    return 'tool_inspect';
+  } else if (e.key === 'c') {
+    return 'tool_cancel';
+  } else if (e.key === 'm' || e.key === 'M') {
+    return 'toggle_overworld';
+  } else if (e.key === '?' || e.key === 'h' || e.key === 'F1') {
+    return 'open_help';
+  }
+  return null;
+}
+
 export default function App() {
   // Application Language & Navigation State
   const [lang, setLang] = useState<'ua' | 'en'>('ua');
@@ -365,45 +432,45 @@ export default function App() {
       handleRunDfAiStep(cleanCmd);
     }
   };
-
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const action = getHotkeyAction(e);
+      if (!action) return;
 
-      if (e.key === '`' || e.key === '~') {
+      if (action === 'toggle_dfhack') {
         e.preventDefault();
         setIsDfHackOpen(prev => !prev);
-      } else if (e.code === 'Space') {
+      } else if (action === 'toggle_running') {
         e.preventDefault();
         setIsRunning(r => !r);
-      } else if (e.key === '.' || e.code === 'Period') {
-        tickRef.current();
-      } else if (e.key === '<' || e.key === ',' || e.code === 'BracketLeft') {
+      } else if (action === 'descend_z') {
         setCurrentZ(z => Math.max(0, z - 1));
-      } else if (e.key === '>' || e.key === '.' || e.code === 'BracketRight') {
+      } else if (action === 'ascend_z') {
         setCurrentZ(z => Math.min(fortressState.depthZ - 1, z + 1));
-      } else if (e.key === 'd') {
+      } else if (action === 'step_tick') {
+        tickRef.current();
+      } else if (action === 'tool_mine') {
         setSelectedTool('mine');
-      } else if (e.key === 't') {
+      } else if (action === 'tool_chop') {
         setSelectedTool('chop');
-      } else if (e.key === 'g') {
+      } else if (action === 'tool_gather') {
         setSelectedTool('gather');
-      } else if (e.key === 'p') {
+      } else if (action === 'tool_stockpiles') {
         setSelectedTool('stockpiles');
-      } else if (e.key === 'b') {
+      } else if (action === 'tool_build') {
         setSelectedTool('build');
-      } else if (e.key === 'w') {
+      } else if (action === 'tool_workshops') {
         setSelectedTool('workshops');
-      } else if (e.key === 'u') {
+      } else if (action === 'open_units') {
         setIsUnitsOpen(true);
-      } else if (e.key === 'q') {
+      } else if (action === 'tool_inspect') {
         setSelectedTool('inspect');
-      } else if (e.key === 'c') {
+      } else if (action === 'tool_cancel') {
         setSelectedTool('cancel');
-      } else if (e.key === 'm' || e.key === 'M') {
+      } else if (action === 'toggle_overworld') {
         setIsOverworldOpen(prev => !prev);
-      } else if (e.key === '?' || e.key === 'h' || e.key === 'F1') {
+      } else if (action === 'open_help') {
         setIsHelpOpen(true);
       }
     };

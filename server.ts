@@ -7,8 +7,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Primary Fast Gemini Model Identifier & Fallback Models for Autonomous DF-AI
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
-const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-3.1-flash-lite"];
+export const DEFAULT_MODEL = "gemini-3.8-flash";
+export const PRIMARY_MODEL = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+export const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-3.1-flash-lite"];
 
 // Quota exhaustion cooldown tracking (prevents rapid-fire 429 errors and log spam)
 let quotaCooldownUntil = 0;
@@ -261,6 +262,7 @@ function generateHeuristicDfAiPlan(body: any, fallbackReason?: string) {
 
   return {
     source: fallbackSource,
+    model: PRIMARY_MODEL,
     isFallback,
     fallbackReason: cleanReason || null,
     statusSummary,
@@ -514,6 +516,7 @@ Decide the best tactical and architectural commands right now!`;
     const parsed = JSON.parse(successfulResponse.text || "{}");
     return res.json({
       source: modelUsed,
+      model: modelUsed,
       isFallback: false,
       ...parsed,
     });
@@ -570,4 +573,8 @@ async function startServer() {
   });
 }
 
-startServer();
+export { app, startServer, generateHeuristicDfAiPlan, getGeminiClient };
+
+if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+  startServer();
+}

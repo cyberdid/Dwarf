@@ -10,6 +10,7 @@ export function buildTaskIndex(tiles: Tile[][][]): TaskIndex {
   const index: TaskIndex = {
     mining: new Map(),
     chopping: new Map(),
+    gathering: new Map(),
     building: new Map(),
     stockpiles: {
       stone: new Map(),
@@ -33,6 +34,8 @@ export function buildTaskIndex(tiles: Tile[][][]): TaskIndex {
           index.mining.set(key, { x, y, z });
         } else if (tile.designation === 'chop' && tile.material === 'tree_trunk') {
           index.chopping.set(key, { x, y, z });
+        } else if (tile.designation === 'gather') {
+          index.gathering.set(key, { x, y, z });
         } else if (tile.designation.startsWith('build_')) {
           index.building.set(key, { x, y, z, type: tile.designation });
         }
@@ -70,6 +73,7 @@ export function updateTileInTaskIndex(
   // Clean up any existing index entries at this coordinate
   index.mining.delete(key);
   index.chopping.delete(key);
+  index.gathering?.delete(key);
   index.building.delete(key);
   index.stockpiles.stone.delete(key);
   index.stockpiles.wood.delete(key);
@@ -82,6 +86,9 @@ export function updateTileInTaskIndex(
     index.mining.set(key, { x, y, z });
   } else if (newTile.designation === 'chop' && newTile.material === 'tree_trunk') {
     index.chopping.set(key, { x, y, z });
+  } else if (newTile.designation === 'gather') {
+    if (!index.gathering) index.gathering = new Map();
+    index.gathering.set(key, { x, y, z });
   } else if (newTile.designation.startsWith('build_')) {
     index.building.set(key, { x, y, z, type: newTile.designation });
   }

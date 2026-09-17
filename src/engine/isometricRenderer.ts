@@ -577,6 +577,16 @@ export function drawIsoDwarf(
     ctx.stroke();
     ctx.fillStyle = '#94a3b8';
     ctx.fillRect(isoX + 8 + swing, footY - 15, 3, 3);
+  } else if (dwarf.currentTask?.type === 'gathering') {
+    const bend = Math.sin(tick * 0.3) * 3;
+    ctx.strokeStyle = '#84cc16';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(isoX + 4, footY - 8);
+    ctx.lineTo(isoX + 8, footY - 3 + bend);
+    ctx.stroke();
+    ctx.fillStyle = '#4ade80';
+    ctx.fillRect(isoX + 7, footY - 4 + bend, 2.5, 2.5);
   }
 
   // Selected Nameplate
@@ -617,13 +627,16 @@ export function drawIsoDesignation(
   } else if (designation === 'chop') {
     color = '#22c55e';
     symbol = '🪓';
+  } else if (designation === 'gather') {
+    color = '#84cc16';
+    symbol = '🌾';
   } else if (designation.startsWith('build_')) {
     color = '#818cf8';
     symbol = '🔨';
   }
 
   // Soft glowing oval marker on the ground (NOT A SQUARE!)
-  ctx.fillStyle = `rgba(${designation === 'mine' ? '245, 158, 11' : '56, 189, 248'}, ${0.2 + pulse * 0.18})`;
+  ctx.fillStyle = `rgba(${designation === 'mine' ? '245, 158, 11' : designation === 'chop' ? '34, 197, 94' : designation === 'gather' ? '132, 204, 22' : '56, 189, 248'}, ${0.2 + pulse * 0.18})`;
   ctx.beginPath();
   ctx.ellipse(isoX, isoY, 12, 6, 0, 0, Math.PI * 2);
   ctx.fill();

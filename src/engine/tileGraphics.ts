@@ -1023,6 +1023,7 @@ export function drawSteamDwarf(
     let sym = '•';
     if (dwarf.currentTask.type === 'mining') sym = '⛏';
     else if (dwarf.currentTask.type === 'chopping') sym = '🪓';
+    else if (dwarf.currentTask.type === 'gathering') sym = '🌾';
     else if (dwarf.currentTask.type === 'hauling') sym = '📦';
     else if (dwarf.currentTask.type === 'sleeping') sym = 'z';
     else if (dwarf.currentTask.type === 'drinking') sym = '🍺';
@@ -1076,6 +1077,17 @@ export function drawSteamItem(ctx: CanvasRenderingContext2D, item: WorldItem, px
 
     ctx.fillStyle = '#78716c';
     ctx.fillRect(cx - 3, cy - 3, 3, 3);
+  } else if (item.type === 'bed') {
+    const sprite = getPixelSprite('bed');
+    ctx.drawImage(sprite, px, py);
+  } else if (item.type === 'door') {
+    const sprite = getPixelSprite('door');
+    ctx.drawImage(sprite, px, py);
+  } else if (item.type === 'chair' || item.type === 'table' || item.type === 'furniture') {
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(cx - 5, cy - 5, 10, 10);
+    ctx.fillStyle = '#b45309';
+    ctx.fillRect(cx - 3, cy - 3, 6, 6);
   }
 }
 

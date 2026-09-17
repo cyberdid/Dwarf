@@ -97,27 +97,10 @@ export function findPath3D(
     return [[startX, startY, startZ]];
   }
 
-  const isWalkable = (x: number, y: number, z: number): boolean => {
+  const isSolidBlock = (x: number, y: number, z: number): boolean => {
     if (x < 0 || x >= sizeX || y < 0 || y >= sizeY || z < 0 || z >= depthZ) return false;
     const tile = tiles[z][y][x];
-
-    // Cannot walk on thin air - must have solid footing
-    if (tile.material === 'air') {
-      return false;
-    }
-
-    // Magma is lethal / impassable
-    if (tile.material === 'magma') {
-      return false;
-    }
-
-    // Deep water is impassable
-    if (tile.material === 'water' && tile.waterLevel >= 5) {
-      return false;
-    }
-
-    // Solid blocks you cannot walk through:
-    if (
+    return (
       tile.material === 'stone' ||
       tile.material === 'granite' ||
       tile.material === 'marble' ||
@@ -132,7 +115,29 @@ export function findPath3D(
       tile.material === 'tree_trunk' ||
       tile.material === 'tree_foliage' ||
       tile.material === 'wall_constructed'
-    ) {
+    );
+  };
+
+  const isHazard = (x: number, y: number, z: number): boolean => {
+    if (x < 0 || x >= sizeX || y < 0 || y >= sizeY || z < 0 || z >= depthZ) return false;
+    const tile = tiles[z][y][x];
+    return tile.material === 'magma' || (tile.material === 'water' && tile.waterLevel >= 5);
+  };
+
+  const isObstructed = (x: number, y: number, z: number): boolean => {
+    return isSolidBlock(x, y, z) || isHazard(x, y, z);
+  };
+
+  const isWalkable = (x: number, y: number, z: number): boolean => {
+    if (x < 0 || x >= sizeX || y < 0 || y >= sizeY || z < 0 || z >= depthZ) return false;
+    const tile = tiles[z][y][x];
+
+    // Cannot walk on thin air - must have solid footing
+    if (tile.material === 'air') {
+      return false;
+    }
+
+    if (isObstructed(x, y, z)) {
       return false;
     }
 
@@ -226,6 +231,43 @@ export function findPath3D(
       if (!isWalkable(nx, ny, nz)) {
         // If it's the target itself (e.g. tree or rock tile designated for work), skip walking on it directly
         continue;
+      }
+
+      const dx = nx - current.x;
+      const dy = ny - current.y;
+      const dz = nz - current.z;
+
+      // Enforce vertical clearance checks and intermediate space clearance:
+      // Prevent diagonal climbs through solid rock ceilings or obstructed intermediate spaces.
+      if (dz !== 0) {
+        if (dz > 0) {
+          // Climbing up: ceiling directly above current position must not be obstructed
+          if (isObstructed(current.x, current.y, current.z + 1)) {
+            continue;
+          }
+          // If diagonal in horizontal axes as well, check intermediate spaces at upper Z
+          if (dx !== 0 && dy !== 0) {
+            if (isObstructed(current.x + dx, current.y, current.z + 1) && isObstructed(current.x, current.y + dy, current.z + 1)) {
+              continue;
+            }
+          }
+        } else {
+          // Stepping down (dz < 0): ceiling directly above destination (at current.z) must not be obstructed
+          if (isObstructed(nx, ny, current.z)) {
+            continue;
+          }
+          // If diagonal in horizontal axes as well, check intermediate spaces at current Z
+          if (dx !== 0 && dy !== 0) {
+            if (isObstructed(current.x + dx, current.y, current.z) && isObstructed(current.x, current.y + dy, current.z)) {
+              continue;
+            }
+          }
+        }
+      } else if (dx !== 0 && dy !== 0) {
+        // 2D diagonal on same Z: prevent cutting through two adjacent solid blocks
+        if (isObstructed(current.x + dx, current.y, current.z) && isObstructed(current.x, current.y + dy, current.z)) {
+          continue;
+        }
       }
 
       const moveCost = (nx !== current.x && ny !== current.y ? 1.414 : 1.0) + (nz !== current.z ? 1.8 : 0);

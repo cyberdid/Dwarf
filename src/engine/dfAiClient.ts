@@ -12,6 +12,8 @@ import {
   DesignationType,
   StockpileType,
   ZoneType,
+  DwarfEntity,
+  WorldItem,
 } from '../types/simulation';
 import { dispatchExpedition } from './overworldGen';
 import { canPlaceBuilding } from './buildingRules';
@@ -308,67 +310,312 @@ export function buildOverworldSummary(overworld: OverworldState) {
 }
 
 /**
- * Execute one autonomous DF-AI / Gemini step
+ * Handle individual special fortress orders (brew_drink, craft_furniture, summon_migrants, dispatch_expedition)
  */
-export async function executeDfAiStep(
+export function handleSpecialOrder(
+  order: { action: string; details: string; [key: string]: any },
   fortress: FortressState,
   overworld: OverworldState,
-  aiState: DfAiState,
   addEvent: (event: Omit<FortressEvent, 'id'>) => void
-): Promise<{
+): {
+  items: WorldItem[];
+  dwarves: DwarfEntity[];
+  overworld: OverworldState;
+  wealthDelta: number;
+} {
+  const newItems = [...fortress.items];
+  const updatedDwarves = [...fortress.dwarves];
+  let updatedOverworld = overworld;
+  let wealthDelta = 0;
+
+  if (order.action === 'brew_drink') {
+    // Spawn 4 barrels of ale at the Still or surface
+    for (let i = 0; i < 4; i++) {
+      newItems.push({
+        id: `ale_brewed_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+        type: 'ale',
+        nameEn: 'Barrel of Dwarven Ale',
+        nameUa: 'Бочка гномського елю',
+        x: Math.min(fortress.sizeX - 2, 28 + (i % 2)),
+        y: Math.min(fortress.sizeY - 2, 16 + Math.floor(i / 2)),
+        z: Math.max(0, fortress.surfaceZ - 1),
+      });
+    }
+    addEvent({
+      tick: fortress.tick,
+      timeStr: `Year ${fortress.year}, ${fortress.season} ${fortress.day}`,
+      textEn: `[df-ai] Brewer processed fermented plump helmets into 4 fresh barrels of Dwarven Ale!`,
+      textUa: `[df-ai] Пивовар зварив 4 бочки свіжого елю з товстошоломників за наказом Gemini!`,
+      type: 'announcement',
+    });
+  } else if (order.action === 'craft_furniture') {
+    const details = (order.details || '').toLowerCase();
+
+    // Parse requested count (order.count or regex from details)
+    let parsedCount = 1;
+    if (typeof order.count === 'number' && order.count > 0) {
+      parsedCount = order.count;
+    } else {
+      const match = details.match(/(\d+)/);
+      if (match) {
+        const p = parseInt(match[1], 10);
+        if (!isNaN(p) && p > 0) parsedCount = p;
+      }
+    }
+    parsedCount = Math.min(10, Math.max(1, parsedCount));
+
+    // Determine requested furniture types
+    const explicitType = order.furnitureType || order.type || order.item;
+    const requestedTypes: ('bed' | 'chair' | 'table' | 'door')[] = [];
+
+    if (explicitType && ['bed', 'chair', 'table', 'door'].includes(explicitType)) {
+      requestedTypes.push(explicitType as 'bed' | 'chair' | 'table' | 'door');
+    } else {
+      if (details.includes('bed')) requestedTypes.push('bed');
+      if (details.includes('chair') || details.includes('throne') || details.includes('seat')) requestedTypes.push('chair');
+      if (details.includes('table')) requestedTypes.push('table');
+      if (details.includes('door')) requestedTypes.push('door');
+
+      if (requestedTypes.length === 0) {
+        requestedTypes.push('bed');
+      }
+    }
+
+    // Find workshop or suitable craft location
+    let craftX = Math.min(fortress.sizeX - 2, 26);
+    let craftY = Math.min(fortress.sizeY - 2, 16);
+    let craftZ = Math.max(0, fortress.surfaceZ - 1);
+
+    let workshopFound = false;
+    if (fortress.tiles) {
+      for (let z = 0; z < fortress.depthZ && !workshopFound; z++) {
+        for (let y = 0; y < fortress.sizeY && !workshopFound; y++) {
+          for (let x = 0; x < fortress.sizeX && !workshopFound; x++) {
+            const m = fortress.tiles[z]?.[y]?.[x]?.material;
+            if (m === 'workshop_carpenter' || m === 'workshop_mason' || m === 'workshop_still') {
+              craftX = x;
+              craftY = y;
+              craftZ = z;
+              workshopFound = true;
+            }
+          }
+        }
+      }
+    }
+
+    const furnitureConfig: Record<'bed' | 'chair' | 'table' | 'door', { en: string; ua: string }> = {
+      bed: { en: 'Fine Wooden Bed', ua: 'Якісне дерев’яне ліжко' },
+      chair: { en: 'Carved Stone Throne', ua: 'Різьблений кам’яний стілець' },
+      table: { en: 'Polished Granite Table', ua: 'Полірований гранітний стіл' },
+      door: { en: 'Sturdy Wooden Door', ua: 'Міцні дерев’яні двері' },
+    };
+
+    let totalCrafted = 0;
+    const craftedSummaryEn: string[] = [];
+    const craftedSummaryUa: string[] = [];
+
+    for (const furnType of requestedTypes) {
+      const cfg = furnitureConfig[furnType];
+      for (let c = 0; c < parsedCount; c++) {
+        const itemX = Math.min(fortress.sizeX - 2, Math.max(1, craftX + ((totalCrafted + c) % 3) - 1));
+        const itemY = Math.min(fortress.sizeY - 2, Math.max(1, craftY + Math.floor((totalCrafted + c) / 3)));
+        const itemZ = craftZ;
+
+        newItems.push({
+          id: `furniture_${furnType}_${Date.now()}_${totalCrafted + c}_${Math.random().toString(36).substring(2, 6)}`,
+          type: furnType,
+          nameEn: cfg.en,
+          nameUa: cfg.ua,
+          x: itemX,
+          y: itemY,
+          z: itemZ,
+        });
+      }
+      totalCrafted += parsedCount;
+      craftedSummaryEn.push(`${parsedCount}x ${cfg.en}`);
+      craftedSummaryUa.push(`${parsedCount}x ${cfg.ua}`);
+    }
+
+    wealthDelta = totalCrafted * 25;
+
+    // Reward idle dwarf craftsman if present
+    const idleIndex = updatedDwarves.findIndex(d => !d.currentTask || d.currentTask.type === 'idle');
+    if (idleIndex !== -1) {
+      const idleDwarf = {
+        ...updatedDwarves[idleIndex],
+        needs: { ...updatedDwarves[idleIndex].needs },
+        skills: { ...updatedDwarves[idleIndex].skills },
+        thoughts: [...updatedDwarves[idleIndex].thoughts],
+      };
+      idleDwarf.needs.work = Math.min(100, idleDwarf.needs.work + 25);
+      const firstType = requestedTypes[0];
+      if (firstType === 'bed' || firstType === 'door') {
+        idleDwarf.skills.carpentry = { ...idleDwarf.skills.carpentry, xp: idleDwarf.skills.carpentry.xp + 25 };
+        if (idleDwarf.skills.carpentry.xp >= 100) {
+          idleDwarf.skills.carpentry.level += 1;
+          idleDwarf.skills.carpentry.xp = 0;
+        }
+      } else {
+        idleDwarf.skills.masonry = { ...idleDwarf.skills.masonry, xp: idleDwarf.skills.masonry.xp + 25 };
+        if (idleDwarf.skills.masonry.xp >= 100) {
+          idleDwarf.skills.masonry.level += 1;
+          idleDwarf.skills.masonry.xp = 0;
+        }
+      }
+      idleDwarf.thoughts.unshift({
+        id: `thought_craft_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        textEn: `Crafted fine furniture (${craftedSummaryEn.join(', ')}) for the mountainhome.`,
+        textUa: `Виготовив якісні меблі (${craftedSummaryUa.join(', ')}) для фортеці.`,
+        positive: true,
+        timestamp: fortress.tick,
+      });
+      if (idleDwarf.thoughts.length > 8) idleDwarf.thoughts.pop();
+      updatedDwarves[idleIndex] = idleDwarf;
+    }
+
+    addEvent({
+      tick: fortress.tick,
+      timeStr: `Year ${fortress.year}, ${fortress.season} ${fortress.day}`,
+      textEn: `[df-ai] Craftsman completed furniture order: ${craftedSummaryEn.join(', ')}!`,
+      textUa: `[df-ai] Ремісник виконав замовлення меблів: ${craftedSummaryUa.join(', ')}!`,
+      type: 'announcement',
+    });
+  } else if (order.action === 'summon_migrants') {
+    let migrantCount = 2;
+    if (typeof order.count === 'number' && order.count > 0) {
+      migrantCount = order.count;
+    } else if (order.details) {
+      const match = order.details.match(/(\d+)/);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > 0) migrantCount = parsed;
+      }
+    }
+    migrantCount = Math.min(10, Math.max(1, migrantCount));
+
+    const firstNames = ['Urist', 'Zon', 'Vabok', 'Iden', 'Kol', 'Meng', 'Dumat', 'Shorast', 'Dodok', 'Kog', 'Tholtig', 'Ingiz'];
+    const lastNames = ['Beardcleaver', 'Deepdelver', 'Gemheart', 'Ironfist', 'Mountainbrow', 'Goldbraid', 'Anvilhammer', 'Stoneshield'];
+    const titles = ['Mason', 'Miner', 'Engraver', 'Brewer', 'Carpenter', 'Blacksmith', 'Craftsdwarf', 'Armorer'];
+    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+
+    const surfaceZ = fortress.surfaceZ;
+    const spawnCenterX = Math.floor(fortress.sizeX / 2);
+    const spawnCenterY = Math.floor(fortress.sizeY / 2);
+
+    for (let m = 0; m < migrantCount; m++) {
+      const name = `${firstNames[(m + Date.now()) % firstNames.length]} ${lastNames[(m + fortress.tick) % lastNames.length]}`;
+      const title = titles[m % titles.length];
+      const spawnX = Math.min(fortress.sizeX - 2, Math.max(1, spawnCenterX + (m % 3) - 1));
+      const spawnY = Math.min(fortress.sizeY - 2, Math.max(1, spawnCenterY + Math.floor(m / 3)));
+
+      const newDwarf: DwarfEntity = {
+        id: `dwarf_migrant_${fortress.tick}_${Date.now()}_${m}_${Math.random().toString(36).substring(2, 6)}`,
+        name,
+        title,
+        gender: m % 2 === 0 ? 'male' : 'female',
+        age: 25 + ((m * 7 + 13) % 45),
+        x: spawnX,
+        y: spawnY,
+        z: surfaceZ,
+        targetPosition: null,
+        path: [],
+        stats: {
+          strength: 12 + (m % 5),
+          agility: 11 + (m % 4),
+          intelligence: 10 + (m % 6),
+          endurance: 13 + (m % 3),
+        },
+        needs: {
+          hunger: 75,
+          thirst: 75,
+          sleep: 80,
+          social: 60,
+          work: 50,
+        },
+        skills: {
+          mining: { level: 2, xp: 0 },
+          woodcutting: { level: 2, xp: 0 },
+          carpentry: { level: 2, xp: 0 },
+          masonry: { level: 3, xp: 0 },
+          brewing: { level: 2, xp: 0 },
+          hauling: { level: 3, xp: 0 },
+        },
+        inventory: [{ type: 'pickaxe', count: 1 }],
+        mood: 'happy',
+        happinessScore: 85,
+        thoughts: [{
+          id: `thought_migrant_${fortress.tick}_${Date.now()}_${m}`,
+          textEn: 'Arrived at the fortress answering the overseer call!',
+          textUa: 'Прибув до фортеці за покликом наглядача!',
+          positive: true,
+          timestamp: fortress.tick,
+        }],
+        currentTask: null,
+        color: colors[m % colors.length],
+      };
+      updatedDwarves.push(newDwarf);
+    }
+
+    addEvent({
+      tick: fortress.tick,
+      timeStr: `Year ${fortress.year}, ${fortress.season} ${fortress.day}`,
+      textEn: `[df-ai] Overseer summoned a migrant wave of ${migrantCount} dwarves to reinforce the mountainhome!`,
+      textUa: `[df-ai] Наглядач закликав хвилю мігрантів із ${migrantCount} гномів для розбудови фортеці!`,
+      type: 'discovery',
+    });
+  } else if (order.action === 'dispatch_expedition') {
+    let targetSiteCoords: { x: number; y: number; name: string } | null = null;
+    for (let y = 0; y < overworld.sizeY && !targetSiteCoords; y++) {
+      for (let x = 0; x < overworld.sizeX && !targetSiteCoords; x++) {
+        const s = overworld.tiles[y]?.[x]?.site;
+        if (s && (x !== overworld.currentEmbarkCoords.x || y !== overworld.currentEmbarkCoords.y)) {
+          targetSiteCoords = { x, y, name: s.name };
+        }
+      }
+    }
+
+    if (targetSiteCoords) {
+      updatedOverworld = dispatchExpedition(
+        updatedOverworld,
+        'trade',
+        { x: targetSiteCoords.x, y: targetSiteCoords.y },
+        targetSiteCoords.name
+      );
+      addEvent({
+        tick: fortress.tick,
+        timeStr: `Year ${fortress.year}, ${fortress.season} ${fortress.day}`,
+        textEn: `[df-ai] Autonomous Overseer dispatched trade caravan to «${targetSiteCoords.name}»!`,
+        textUa: `[df-ai] Наглядач Gemini спорядив торговельний караван до «${targetSiteCoords.name}»!`,
+        type: 'discovery',
+      });
+    }
+  }
+
+  return {
+    items: newItems,
+    dwarves: updatedDwarves,
+    overworld: updatedOverworld,
+    wealthDelta,
+  };
+}
+
+/**
+ * Apply all autonomous DF-AI / Gemini commands (mining, chopping, building, stockpiles, zones, orders)
+ */
+export function applyDfAiCommands(
+  fortress: FortressState,
+  overworld: OverworldState,
+  commands: any,
+  addEvent: (event: Omit<FortressEvent, 'id'>) => void
+): {
   updatedFortress: FortressState;
   updatedOverworld: OverworldState;
-  updatedAiState: DfAiState;
-}> {
-  const fortressSummary = buildFortressSummary(fortress);
-  const overworldSummary = buildOverworldSummary(overworld);
-
-  let responseData: any = null;
-
-  try {
-    const res = await fetch('/api/df-ai/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fortressSummary,
-        overworldSummary,
-        directive: aiState.directive,
-        historyLogs: aiState.terminalLogs.slice(-4).map(l => l.text),
-      }),
-    });
-
-    if (res.ok) {
-      responseData = await res.json();
-    }
-  } catch (err) {
-    console.warn('Network error calling /api/df-ai/step, using client fallback:', err);
-  }
-
-  // Fallback if network or server error
-  if (!responseData || !responseData.commands) {
-    responseData = {
-      source: 'client-df-ai-heuristic',
-      statusSummary: 'AUTONOMOUS_HEURISTIC',
-      thoughtProcessEn: 'Server response delayed. Executing local df-ai blueprinting for mining and alcohol production.',
-      thoughtProcessUa: 'Автономний наглядач df-ai оптимізує черги робіт: поповнення елю та видобуток породи.',
-      commands: {
-        mine: [{ x: 26, y: 16, z: Math.max(0, fortress.surfaceZ - 1) }],
-        chop: fortressSummary.nearbyTrees.slice(0, 2),
-        build: [{ x: 28, y: 16, z: Math.max(0, fortress.surfaceZ - 1), type: 'build_workshop_still' }],
-        stockpiles: [],
-        zones: [],
-        orders: [{ action: 'brew_drink', details: 'Emergency brewing at Still' }],
-      },
-      dfHackTerminalLine: '[df-ai:heuristic] Blueprint auto-applied: still and exploratory shaft.',
-    };
-  }
-
+  newHighlights: { x: number; y: number; z: number; type: string }[];
+} {
   // Deep copy tiles to apply commands
   const newTiles = fortress.tiles.map(layer => layer.map(row => row.map(tile => ({ ...tile }))));
   const newHighlights: { x: number; y: number; z: number; type: string }[] = [];
   const taskIndex = fortress.taskIndex || buildTaskIndex(newTiles);
-
-  const { commands } = responseData;
 
   // 1. Apply Mining Designations
   if (Array.isArray(commands?.mine)) {
@@ -446,59 +693,133 @@ export async function executeDfAiStep(
 
   let updatedOverworld = overworld;
   let items = [...fortress.items];
+  let dwarves = [...fortress.dwarves];
+  let wealth = fortress.wealth;
 
   // 6. Handle Special Orders
   if (Array.isArray(commands?.orders)) {
     for (const order of commands.orders) {
-      if (order.action === 'brew_drink') {
-        // Spawn 3-5 barrels of ale at the Still or surface
-        for (let i = 0; i < 4; i++) {
-          items.push({
-            id: `ale_brewed_${Date.now()}_${i}`,
-            type: 'ale',
-            nameEn: 'Barrel of Dwarven Ale',
-            nameUa: 'Бочка гномського елю',
-            x: Math.min(fortress.sizeX - 2, 28 + (i % 2)),
-            y: Math.min(fortress.sizeY - 2, 16 + Math.floor(i / 2)),
-            z: Math.max(0, fortress.surfaceZ - 1),
-          });
-        }
-        addEvent({
-          tick: fortress.tick,
-          timeStr: `Year ${fortress.year}, ${fortress.season} ${fortress.day}`,
-          textEn: `[df-ai] Brewer processed fermented plump helmets into 4 fresh barrels of Dwarven Ale!`,
-          textUa: `[df-ai] Пивовар зварив 4 бочки свіжого елю з товстошоломників за наказом Gemini!`,
-          type: 'announcement',
-        });
-      } else if (order.action === 'dispatch_expedition') {
-        let targetSiteCoords: { x: number; y: number; name: string } | null = null;
-        for (let y = 0; y < overworld.sizeY && !targetSiteCoords; y++) {
-          for (let x = 0; x < overworld.sizeX && !targetSiteCoords; x++) {
-            const s = overworld.tiles[y]?.[x]?.site;
-            if (s && (x !== overworld.currentEmbarkCoords.x || y !== overworld.currentEmbarkCoords.y)) {
-              targetSiteCoords = { x, y, name: s.name };
-            }
-          }
-        }
-
-        if (targetSiteCoords) {
-          updatedOverworld = dispatchExpedition(
-            updatedOverworld,
-            'trade',
-            { x: targetSiteCoords.x, y: targetSiteCoords.y },
-            targetSiteCoords.name
-          );
-          addEvent({
-            tick: fortress.tick,
-            timeStr: `Year ${fortress.year}, ${fortress.season} ${fortress.day}`,
-            textEn: `[df-ai] Autonomous Overseer dispatched trade caravan to «${targetSiteCoords.name}»!`,
-            textUa: `[df-ai] Наглядач Gemini спорядив торговельний караван до «${targetSiteCoords.name}»!`,
-            type: 'discovery',
-          });
-        }
-      }
+      const res = handleSpecialOrder(
+        order,
+        { ...fortress, tiles: newTiles, items, dwarves, wealth },
+        updatedOverworld,
+        addEvent
+      );
+      items = res.items;
+      dwarves = res.dwarves;
+      updatedOverworld = res.overworld;
+      wealth += res.wealthDelta;
     }
   }
+
+  const updatedFortress: FortressState = {
+    ...fortress,
+    tiles: newTiles,
+    dwarves,
+    items,
+    taskIndex,
+    wealth,
+  };
+
+  return {
+    updatedFortress,
+    updatedOverworld,
+    newHighlights,
+  };
+}
+
+/**
+ * Execute one autonomous DF-AI / Gemini step
+ */
+export async function executeDfAiStep(
+  fortress: FortressState,
+  overworld: OverworldState,
+  aiState: DfAiState,
+  addEvent: (event: Omit<FortressEvent, 'id'>) => void
+): Promise<{
+  updatedFortress: FortressState;
+  updatedOverworld: OverworldState;
+  updatedAiState: DfAiState;
+}> {
+  const fortressSummary = buildFortressSummary(fortress);
+  const overworldSummary = buildOverworldSummary(overworld);
+
+  let responseData: any = null;
+
+  try {
+    const res = await fetch('/api/df-ai/step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fortressSummary,
+        overworldSummary,
+        directive: aiState.directive,
+        historyLogs: aiState.terminalLogs.slice(-4).map(l => l.text),
+      }),
+    });
+
+    if (res.ok) {
+      responseData = await res.json();
+    }
+  } catch (err) {
+    console.warn('Network error calling /api/df-ai/step, using client fallback:', err);
+  }
+
+  // Fallback if network or server error
+  if (!responseData || !responseData.commands) {
+    const directiveLower = (aiState.directive || '').toLowerCase();
+    const shouldCraftFurniture =
+      directiveLower.includes('furniture') ||
+      directiveLower.includes('bed') ||
+      directiveLower.includes('chair') ||
+      directiveLower.includes('table') ||
+      (fortressSummary.existingBeds?.length || 0) < fortressSummary.population;
+    const shouldSummonMigrants =
+      directiveLower.includes('migrant') ||
+      directiveLower.includes('summon') ||
+      directiveLower.includes('population');
+
+    const orders: { action: string; details: string }[] = [
+      { action: 'brew_drink', details: 'Emergency brewing at Still' },
+    ];
+    if (shouldCraftFurniture) {
+      orders.push({ action: 'craft_furniture', details: 'Craft 2 wooden beds, 2 chairs, and 1 table' });
+    }
+    if (shouldSummonMigrants) {
+      orders.push({ action: 'summon_migrants', details: 'Summon 2 migrant dwarves' });
+    }
+
+    const fallbackStatus = shouldSummonMigrants
+      ? 'MIGRANT_REINFORCEMENT'
+      : shouldCraftFurniture
+      ? 'FURNITURE_CRAFTING'
+      : 'AUTONOMOUS_HEURISTIC';
+
+    responseData = {
+      source: 'client-df-ai-heuristic',
+      statusSummary: fallbackStatus,
+      thoughtProcessEn: 'Server response delayed. Executing local df-ai blueprinting for mining, brewing, and fortress logistics.',
+      thoughtProcessUa: 'Автономний наглядач df-ai оптимізує черги робіт: поповнення елю, меблі та шахтарство.',
+      commands: {
+        mine: [{ x: 26, y: 16, z: Math.max(0, fortress.surfaceZ - 1) }],
+        chop: fortressSummary.nearbyTrees.slice(0, 2),
+        build: [{ x: 28, y: 16, z: Math.max(0, fortress.surfaceZ - 1), type: 'build_workshop_still' }],
+        stockpiles: [],
+        zones: [],
+        orders,
+      },
+      dfHackTerminalLine: '[df-ai:heuristic] Blueprint auto-applied: orders and exploratory shaft.',
+    };
+  }
+
+  const { updatedFortress, updatedOverworld, newHighlights } = applyDfAiCommands(
+    fortress,
+    overworld,
+    responseData.commands,
+    addEvent
+  );
+
+  const commands = responseData.commands;
 
   // Build terminal logs
   const timeStr = `${String(Math.floor(fortress.tick / 60)).padStart(2, '0')}:${String(fortress.tick % 60).padStart(2, '0')}`;
@@ -537,10 +858,17 @@ export async function executeDfAiStep(
   let govExplanationEn = 'Strategic development: Gemini is executing planned central gallery excavation, stockpile allocation, and defensive fortifying.';
 
   const st = (responseData.statusSummary || '').toUpperCase();
+  const hasCraftOrder = ordersList.some((o: any) => o.action === 'craft_furniture');
+  const hasMigrantOrder = ordersList.some((o: any) => o.action === 'summon_migrants');
+
   if (st.includes('BOOZE') || st.includes('DRINK') || st.includes('FOOD')) {
     governanceCategory = 'survival';
     govExplanationUa = 'Критичний пріоритет #1 (Виживання): Рівень елю/їжі нижчий за безпечний поріг. Gemini зосередила ресурси на будівництві дистилятора (Still) та варінні нових бочок для запобігання зневодненню гномів.';
     govExplanationEn = 'Critical Priority #1 (Survival): Booze or rations below safe threshold. Gemini focused resources on Still construction and emergency brewing to prevent dwarf dehydration.';
+  } else if (st.includes('MIGRANT') || st.includes('POPULATION')) {
+    governanceCategory = 'expansion';
+    govExplanationUa = 'Пріоритет #6 (Демографія): Наглядач закликав нову хвилю мігрантів для поповнення робочої сили фортеці.';
+    govExplanationEn = 'Priority #6 (Demographics): Overseer summoned a new migrant wave to reinforce the fortress workforce.';
   } else if (st.includes('RESID') || st.includes('BED')) {
     governanceCategory = 'residential';
     govExplanationUa = 'Пріоритет #2 (Житло): Населення фортеці перевищує кількість спалень. Gemini призначила розкопки індивідуальних кімнат для збереження моралі та запобігання бунтам (tantrum spirals).';
@@ -549,7 +877,7 @@ export async function executeDfAiStep(
     governanceCategory = 'mining';
     govExplanationUa = 'Пріоритет #3 (Шахтарство та ресурси): Gemini розвідала геологічні пласти та скерувала шахтарів на видобуток руди для металургії та створення цінностей фортеці.';
     govExplanationEn = 'Priority #3 (Mining & Strata): Gemini prospected geological veins and tasked miners with ore extraction for metallurgy and fortress wealth.';
-  } else if (st.includes('WORKSHOP') || st.includes('MASON') || st.includes('CRAFT')) {
+  } else if (st.includes('WORKSHOP') || st.includes('MASON') || st.includes('CRAFT') || hasCraftOrder) {
     governanceCategory = 'economy';
     govExplanationUa = 'Пріоритет #4 (Ремесла): Gemini заклала виробничий сектор для обробки каменю та деревини на меблі й блоки для зміцнення цитаделі.';
     govExplanationEn = 'Priority #4 (Crafting): Gemini founded production workshops to process rough stone and lumber into furniture and defensive blocks.';
@@ -557,6 +885,10 @@ export async function executeDfAiStep(
     governanceCategory = 'diplomacy';
     govExplanationUa = 'Пріоритет #5 (Зовнішній світ): Базові потреби фортеці закриті, тому Gemini спорядила торговельну експедицію до сусіднього поселення на карті континенту.';
     govExplanationEn = 'Priority #5 (Overworld): Core fortress needs secured; Gemini dispatched a trade caravan expedition to a neighboring settlement on the world map.';
+  } else if (hasMigrantOrder) {
+    governanceCategory = 'expansion';
+    govExplanationUa = 'Пріоритет #6 (Демографія): Наглядач закликав нову хвилю мігрантів для поповнення робочої сили фортеці.';
+    govExplanationEn = 'Priority #6 (Demographics): Overseer summoned a new migrant wave to reinforce the fortress workforce.';
   }
 
   const summaryPartsUa: string[] = [];
@@ -646,13 +978,6 @@ export async function executeDfAiStep(
     highlightedTiles: newHighlights,
     isFallback,
     fallbackReason,
-  };
-
-  const updatedFortress: FortressState = {
-    ...fortress,
-    tiles: newTiles,
-    items,
-    taskIndex,
   };
 
   return {

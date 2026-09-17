@@ -38,7 +38,7 @@ export type MaterialType =
   | 'table'
   | 'well';
 
-export type DesignationType = 'none' | 'mine' | 'chop' | 'build_wall' | 'build_door' | 'build_bed' | 'build_workshop_still' | 'build_workshop_mason';
+export type DesignationType = 'none' | 'mine' | 'chop' | 'gather' | 'build_wall' | 'build_door' | 'build_bed' | 'build_workshop_still' | 'build_workshop_mason';
 
 export type StockpileType = 'none' | 'stone' | 'wood' | 'food' | 'ore';
 
@@ -78,7 +78,7 @@ export interface DwarfThought {
 }
 
 export interface DwarfTask {
-  type: 'idle' | 'mining' | 'chopping' | 'hauling' | 'building' | 'sleeping' | 'drinking' | 'eating' | 'socializing';
+  type: 'idle' | 'mining' | 'chopping' | 'gathering' | 'hauling' | 'building' | 'sleeping' | 'drinking' | 'eating' | 'socializing';
   targetX: number;
   targetY: number;
   targetZ: number;
@@ -146,9 +146,22 @@ export interface CreatureEntity {
   symbol: string;
 }
 
+export type WorldItemType =
+  | 'stone'
+  | 'wood'
+  | 'ore_iron'
+  | 'ore_gold'
+  | 'ale'
+  | 'food'
+  | 'bed'
+  | 'chair'
+  | 'table'
+  | 'door'
+  | 'furniture';
+
 export interface WorldItem {
   id: string;
-  type: 'stone' | 'wood' | 'ore_iron' | 'ore_gold' | 'ale' | 'food';
+  type: WorldItemType;
   nameEn: string;
   nameUa: string;
   x: number;
@@ -170,6 +183,7 @@ export interface BuildTargetCoord extends Coord3D {
 export interface TaskIndex {
   mining: Map<string, Coord3D>;
   chopping: Map<string, Coord3D>;
+  gathering: Map<string, Coord3D>;
   building: Map<string, BuildTargetCoord>;
   stockpiles: {
     stone: Map<string, Coord3D>;

@@ -612,7 +612,7 @@ export const FortressCanvas: React.FC<FortressCanvasProps> = ({
         }
       }
 
-      const isSurfaceLevel = currentZ >= 38;
+      const isSurfaceLevel = currentZ >= state.surfaceZ;
 
       ctx.restore(); // Restore world transform to screen coordinates for lighting buffer
       lightingEngine.renderLighting(
@@ -1224,6 +1224,11 @@ function drawAsciiItem(
     case 'ore_gold': sym = '$'; col = '#f59e0b'; break;
     case 'food': sym = '%'; col = '#ec4899'; break;
     case 'ale': sym = 'o'; col = '#fbbf24'; break;
+    case 'bed': sym = '🛏'; col = '#93c5fd'; break;
+    case 'chair': sym = 'h'; col = '#c084fc'; break;
+    case 'table': sym = 'T'; col = '#fde047'; break;
+    case 'door': sym = '+'; col = '#d97706'; break;
+    case 'furniture': sym = 'π'; col = '#38bdf8'; break;
   }
   ctx.fillStyle = col;
   ctx.font = '14px "Fira Code", monospace';
@@ -1246,6 +1251,10 @@ function drawDesignationOverlay(
     color = 'rgba(34, 197, 94, 0.45)';
     strokeColor = '#22c55e';
     symbol = '🪓';
+  } else if (designation === 'gather') {
+    color = 'rgba(132, 204, 22, 0.45)';
+    strokeColor = '#84cc16';
+    symbol = '🌾';
   } else if (designation.startsWith('build_')) {
     color = 'rgba(56, 189, 248, 0.45)';
     strokeColor = '#38bdf8';
